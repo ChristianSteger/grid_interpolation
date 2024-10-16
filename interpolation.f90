@@ -142,12 +142,16 @@ MODULE interpolation
     DO ind_y = 1, dim_y
       DO ind_x = 1, dim_x
 
+				! Find nearest n neighbours
         point_target = [x_axis(ind_x), y_axis(ind_y)]
         neighbours = 1.0e6 ! Initialise neighbours array to large values
         CALL nearest_neighbours(tree%root, point_target, 0, neighbours, &
           num_neighbours, neighbours_index)
-			  !data_ip(ind_y, ind_x) = data_in(neighbours_index(1))  !!!!!!!!!!!!!!!!!!!! currently simply nearest neighbour!!!!!
 
+				! Nearest neighbour interpolation
+			  !data_ip(ind_y, ind_x) = data_in(neighbours_index(1))
+
+			  ! Inverse distance weighted interpolation
         numerator = 0.0
         denominator = 0.0
         DO i = 1, num_neighbours
@@ -162,7 +166,7 @@ MODULE interpolation
     CALL cpu_time(time_2)
     WRITE(6,*) 'Interpolation: ', time_2 - time_1
 
-    ! Free the memory associated with k-d tree
+    ! Free the memory associated with the k-d tree
     CALL free_kdtree(tree)
 
     DEALLOCATE(index)

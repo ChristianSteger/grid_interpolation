@@ -5,7 +5,7 @@
 # regular -> unstructured grid: bilinear interpolation
 # unstructured -> regular grid: inverse distance weighting (IDW)
 #
-# Author: Christian Steger, October 2023
+# Author: Christian Steger, October 2024
 
 # Load modules
 import numpy as np
@@ -26,16 +26,18 @@ from interpolation import interpolation as ip_fortran # type: ignore
 # Create example data and grid
 ###############################################################################
 
-# Regular grid
+# Grid/mesh size
 # ----- small grid/mesh -----
-# x_size = 110
-# y_size = 91
-# num_vertices = 1_300
+x_size = 110
+y_size = 91
+num_vertices = 1_300
 # ----- large grid/mesh -----
-x_size = 770
-y_size = 637
-num_vertices = 250_000
+# x_size = 770
+# y_size = 637
+# num_vertices = 250_000
 # ----------------------
+
+# Regular grid
 limits = {"x_min": -50.0, "x_max": 40.0, "y_min": -30.0, "y_max": 40.0}
 x_axis = np.linspace(limits["x_min"], limits["x_max"], x_size)
 y_axis = np.linspace(limits["y_min"], limits["y_max"], y_size)
@@ -111,13 +113,14 @@ gs = gridspec.GridSpec(1, 4, left=0.1, bottom=0.1, right=0.9, top=0.9,
 # -----------------------------------------------------------------------------
 ax0 = plt.subplot(gs[0])
 plt.pcolormesh(x_axis, y_axis, z_reg, cmap=cmap, norm=norm)
+title = "Data on regular grid"
 if centroids.shape[0] < 50_000:
     plt.triplot(points[:, 0], points[:, 1], triangles.simplices, color="black",
                 linewidth=0.5)
     plt.scatter(centroids[:, 0], centroids[:, 1], c=cmap(norm(z_tri_ip)), s=50)
+    title += " and interpolated to triangle mesh"
 plt.axis((limits["x_min"], limits["x_max"], limits["y_min"], limits["y_max"]))
-plt.title("Data on regular grid (and interpolated to triangle mesh)",
-          fontsize=fontsize)
+plt.title(title, fontsize=fontsize)
 # -----------------------------------------------------------------------------
 ax1 = plt.subplot(gs[1])
 plt.tripcolor(points[:, 0], points[:, 1], triangles.simplices, z_tri_ip,

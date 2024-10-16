@@ -1,12 +1,12 @@
 # Description
-Fortran code to interpolate between regular and unstructured grid (e.g. triangle mesh).
+Fortran code to interpolate from regular to unstructured grid (e.g. triangle mesh) and vice versa.
 The former interpolation is performed with bilinear interpolation, the latter with inverse distance weighting (IDW) and the application of a k-d tree to efficiently find the nearest neighobours.
 
 # Usage
 
 ## Create conda environment
 ```bash
-conda create -n grid_interpolation numpy scipy matplotlib netcdf4 shapely xarray cython dask numba ipython gfortran pyinterp meson -c conda-forge
+conda create -n grid_interpolation numpy scipy matplotlib ipython gfortran meson -c conda-forge
 ```
 
 ## Compile Fortran code and build shared library for F2PY

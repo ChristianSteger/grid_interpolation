@@ -25,7 +25,7 @@ MODULE kd_tree
 	RECURSIVE SUBROUTINE build_kd_tree(tree, points, num_points, depth, index)
 
 		TYPE(kdtree_type), INTENT(inout) :: tree
-		REAL, DIMENSION(:,:), INTENT(in) :: points
+		REAL, DIMENSION(:, :), INTENT(in) :: points
 		INTEGER, INTENT(in) :: num_points
 		INTEGER, INTENT(in) :: depth
 		INTEGER, DIMENSION(:), INTENT(in) :: index
@@ -39,16 +39,14 @@ MODULE kd_tree
 
 		axis = mod(depth, 2)
 
-		! Allocate and initialize sorted_points
+		! Allocate and initialise arrays
 		ALLOCATE(sorted_points(2, num_points))
 		sorted_points = points
- 
 		ALLOCATE(sorted_index(num_points))
 		sorted_index = index
 
 		! Sort data according to median
 		ind_median = (num_points + 1) / 2
-		!CALL quicksort(sorted_points, 1, num_points, axis + 1)
 		CALL partition_iter(sorted_points, 1, num_points, ind_median, axis + 1, &
 			sorted_index)
 
@@ -58,13 +56,13 @@ MODULE kd_tree
 		node%index = sorted_index(ind_median)
 
 		! Build the left and right subtrees
-		CALL build_kd_tree_sub(node%left, sorted_points(:, 1:ind_median-1), &
-			ind_median-1, depth+1, sorted_index(1:ind_median-1))
+		CALL build_kd_tree_sub(node%left, sorted_points(:, 1:ind_median - 1), &
+			ind_median - 1, depth + 1, sorted_index(1:ind_median - 1))
 		CALL build_kd_tree_sub(node%right, sorted_points(:, &
-			ind_median+1:num_points), num_points-ind_median, depth+1, &
-			sorted_index(ind_median+1:num_points))
+			ind_median + 1:num_points), num_points - ind_median, depth + 1, &
+			sorted_index(ind_median + 1:num_points))
 
-		! Assign the node as the root IF it's the first CALL
+		! Assign the node as the root if it is the first call
 		IF (.not. associated(tree%root)) THEN
 			tree%root => node
 		ENDIF
@@ -75,7 +73,7 @@ MODULE kd_tree
 		index)
 
 		TYPE(kd_node), POINTER :: node
-		REAL, DIMENSION(:,:), INTENT(in) :: points
+		REAL, DIMENSION(:, :), INTENT(in) :: points
 		INTEGER, INTENT(in) :: num_points
 		INTEGER, INTENT(in) :: depth
 		INTEGER, DIMENSION(:), INTENT(in) :: index
@@ -94,7 +92,7 @@ MODULE kd_tree
 	RECURSIVE SUBROUTINE partition_iter(points, ind_left, ind_right, ind_k, &
 		axis, index)
 
-		REAL, DIMENSION(:,:), INTENT(inout) :: points
+		REAL, DIMENSION(:, :), INTENT(inout) :: points
 		INTEGER :: ind_left, ind_right, ind_k, axis
 		INTEGER, DIMENSION(:), INTENT(inout) :: index
 		INTEGER :: ind_pivot, ind_store
@@ -104,7 +102,7 @@ MODULE kd_tree
 		INTEGER :: ind
 		INTEGER :: i
 
-		! No processing required for 1 point
+		! No processing required for one point
 		IF (ind_left == ind_right) RETURN
 
 		! Choose pivot element
@@ -160,7 +158,7 @@ MODULE kd_tree
 		TYPE(kd_node), POINTER :: node
 		REAL, DIMENSION(2), INTENT(in) :: point_target
 		INTEGER, INTENT(in) :: depth
-		REAL, DIMENSION(:,:), INTENT(inout) :: neighbours
+		REAL, DIMENSION(:, :), INTENT(inout) :: neighbours
 		INTEGER, INTENT(in) :: num_neighbours
 		INTEGER, DIMENSION(:), INTENT(inout) :: neighbours_index
 
@@ -204,7 +202,7 @@ MODULE kd_tree
 	SUBROUTINE insert_neighbour(neighbours, dist_sqrt, point, index, &
 		num_neighbours, neighbours_index)
 
-		REAL, DIMENSION(:,:), INTENT(inout) :: neighbours
+		REAL, DIMENSION(:, :), INTENT(inout) :: neighbours
 		REAL, INTENT(in) :: dist_sqrt
 		REAL, INTENT(in) :: point(2)
 		INTEGER, INTENT(in) :: index
@@ -216,11 +214,11 @@ MODULE kd_tree
     ! stored distance
 		IF ((size(neighbours, 2) < num_neighbours) .or. &
 			(dist_sqrt < maxval(neighbours(3, :)))) THEN
-       ! Shift points and distances if needed
+			! Shift points and distances if needed
 			DO i = min(num_neighbours, size(neighbours, 2)), 2, -1
-				IF (dist_sqrt < neighbours(3, i-1)) THEN
-					neighbours(:, i) = neighbours(:, i-1)
-					neighbours_index(i) = neighbours_index(i-1)
+				IF (dist_sqrt < neighbours(3, i - 1)) THEN
+					neighbours(:, i) = neighbours(:, i - 1)
+					neighbours_index(i) = neighbours_index(i - 1)
         ELSE
         	EXIT
         ENDIF
@@ -253,7 +251,7 @@ MODULE kd_tree
 
 		TYPE(kd_node), POINTER :: node
 
-		! If the node is not associated, there's nothing to deallocate
+		! If the node is not associated, there is nothing to deallocate
 		IF (.not. associated(node)) RETURN
 
 		! Recursively deallocate the left and right subtrees
@@ -264,7 +262,6 @@ MODULE kd_tree
 		node%left => null()
 		node%right => null()
 
-		! Deallocate the current node
 		DEALLOCATE(node)
 
 	END SUBROUTINE deallocate_kd_tree
