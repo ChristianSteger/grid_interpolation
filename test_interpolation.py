@@ -92,7 +92,7 @@ z_reg_ip_scipy = (((z_tri_ip[indices] / dist)).sum(axis=1)
                 / (1.0 / dist).sum(axis=1)).reshape(y_size, x_size)
 
 # IDW interpolation (unstructured -> regular grid) (Fortran)
-z_reg_ip = ip_fortran.inverse_distance_weighted(
+z_reg_ip = ip_fortran.idw_kdtree(
                 np.asfortranarray(centroids.transpose()),
                 z_tri_ip, x_axis, y_axis, num_nn)
 print(np.abs(z_reg_ip - z_reg_ip_scipy).max())

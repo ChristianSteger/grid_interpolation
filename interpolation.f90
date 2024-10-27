@@ -92,9 +92,10 @@ MODULE interpolation
 
   ! ---------------------------------------------------------------------------
   ! Inverse distance weighted interpolation (unstructured -> regular grid)
+  ! with k-d tree
   ! ---------------------------------------------------------------------------
 
-  SUBROUTINE inverse_distance_weighted(points, num_points, data_in, &
+  SUBROUTINE idw_kdtree(points, num_points, data_in, &
     x_axis, dim_x, y_axis, dim_y, num_neighbours, data_ip)
 
     INTEGER :: num_points, dim_x, dim_y
@@ -173,7 +174,7 @@ MODULE interpolation
     DEALLOCATE(neighbours)
     DEALLOCATE(neighbours_index)
 
-  END SUBROUTINE inverse_distance_weighted
+  END SUBROUTINE idw_kdtree
 
   ! ---------------------------------------------------------------------------
 

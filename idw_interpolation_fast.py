@@ -75,7 +75,7 @@ print("Number of cells in triangle mesh: ", triangles.simplices.shape[0])
 # vertices_per_triangle = vertices[triangles.simplices]
 # neighbors = triangles.neighbors
 # neighbour triangles (-1: boundary -> no triangle)
-indptr, indices = triangles.vertex_neighbor_vertices
+indptr_con, indices_con = triangles.vertex_neighbor_vertices
 
 ###############################################################################
 # Bilinear interpolation to points and overview plot
@@ -104,45 +104,71 @@ plt.triplot(points[:, 0], points[:, 1], triangles.simplices, color="black",
                 linewidth=0.5, zorder=2)
 plt.scatter(points[:, 0], points[:, 1], color="black", s=25, zorder=2)
 # -----------------------------------------------------------------------------
-# plt.scatter(points[:, 0], points[:, 1], c=cmap(norm(z_reg_ip)), s=150,
+# plt.scatter(points[:, 0], points[:, 1], c=cmap(norm(z_reg_ip)), s=50,
 #             zorder=3)
 # -----------------------------------------------------------------------------
 plt.axis((x_grid[0], x_grid[-1], y_grid[0], y_grid[-1]))
 plt.show()
 
 ###############################################################################
- # Assign points to regular grid cells
+ # Auxiliary functions
 ###############################################################################
 
- # Assign points to regular grid cells
+ # Assign points to regular grid cells (old)
 @njit
 def assign_points_to_cells(points, x_axis, y_axis, grid_spac):
-    size_iot = 10
-    index_of_pts = np.empty((y_axis.size, x_axis.size, size_iot),
-                            dtype=np.int32)
-    index_of_pts.fill(-1)
-    num_iot = np.zeros((y_axis.size, x_axis.size), dtype=np.int32)
+
+    # Compute number of points in each cells
+    num_ppgc = np.zeros((y_axis.size, x_axis.size), dtype=np.int32)
+    # ppgc: points per grid cell
     for i in range(points.shape[0]):
         ind_x = int((points[i, 0] - x_axis[0] + grid_spac / 2.0) 
-                    * 1.0 / grid_spac)
+                    / grid_spac)
         if ind_x < 0:
             ind_x = 0
         if ind_x > (x_axis.size - 1):
             ind_x = x_axis.size - 1
         ind_y = int((points[i, 1] - y_axis[0] + grid_spac / 2.0) 
-                    * 1.0 / grid_spac)
+                    / grid_spac)
         if ind_y < 0:
             ind_y = 0
         if ind_y > (y_axis.size - 1):
             ind_y = y_axis.size - 1
-        index_of_pts[ind_y, ind_x, num_iot[ind_y, ind_x]] = i
-        num_iot[ind_y, ind_x] += 1
-        # Increase size of index_of_pts if necessary (e.g. by steps of 5)...
-    return index_of_pts, num_iot
+        num_ppgc[ind_y, ind_x] += 1
 
-index_of_pts, num_iot = assign_points_to_cells(points, x_axis, y_axis,
-                                               grid_spac)
-# %timeit -n 5 -r 5 assign_points_to_cells(points, x_axis, y_axis, grid_spac)
+    # Compute index pointer array
+    indptr = np.empty((y_axis.size, x_axis.size, 2), dtype=np.int32)
+    cumsum = 0
+    for ind_y in range(y_axis.size):
+        for ind_x in range(x_axis.size):
+            indptr[ind_y, ind_x, 0] = cumsum
+            cumsum += num_ppgc[ind_y, ind_x]
+            indptr[ind_y, ind_x, 1] = cumsum
+    
+    # Assign index of points
+    index_of_pts = np.empty(x_axis.size * y_axis.size, dtype=np.int32)
+    num_ppgc[:] = 0
+    for i in range(points.shape[0]):
+        ind_x = int((points[i, 0] - x_axis[0] + grid_spac / 2.0) 
+                    / grid_spac)
+        if ind_x < 0:
+            ind_x = 0
+        if ind_x > (x_axis.size - 1):
+            ind_x = x_axis.size - 1
+        ind_y = int((points[i, 1] - y_axis[0] + grid_spac / 2.0) 
+                    / grid_spac)
+        if ind_y < 0:
+            ind_y = 0
+        if ind_y > (y_axis.size - 1):
+            ind_y = y_axis.size - 1
+        index_of_pts[indptr[ind_y, ind_x, 0] + num_ppgc[ind_y, ind_x]] = i
+        num_ppgc[ind_y, ind_x] += 1
+
+    return index_of_pts, indptr, num_ppgc
+
+index_of_pts, indptr, num_ppgc \
+    = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
+# %timeit assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
 
 ###############################################################################
 # IDW interpolation from 'n' nearest neighbours
@@ -150,8 +176,8 @@ index_of_pts, num_iot = assign_points_to_cells(points, x_axis, y_axis,
 
 def idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
 
-    index_of_pts, num_iot = assign_points_to_cells(points, x_axis, y_axis,
-                                               grid_spac)
+    index_of_pts, indptr, num_ppgc \
+    = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
     
     # K-d tree as reference
     kd_tree = KDTree(points)
@@ -178,8 +204,8 @@ def idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
         
             # Assign points to list
             points_cons = []
-            for i in range(num_iot[ind_y, ind_x]):
-                ind = index_of_pts[ind_y, ind_x, i]
+            for i in range(num_ppgc[ind_y, ind_x]):
+                ind = index_of_pts[indptr[ind_y, ind_x, 0] + i]
                 dist_sq = (centre[0] - points[ind, 0]) ** 2 \
                         + (centre[1] - points[ind, 1]) ** 2
                 points_cons.append((ind, dist_sq))
@@ -217,8 +243,9 @@ def idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
                             or (ind_y_nb < 0) 
                             or (ind_y_nb > (y_axis.size - 1))):
                             continue
-                        for k in range(num_iot[ind_y_nb, ind_x_nb]):
-                            ind = index_of_pts[ind_y_nb, ind_x_nb, k]
+                        for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
+                            ind = index_of_pts[
+                                indptr[ind_y_nb, ind_x_nb, 0] + k]
                             dist_sq = (centre[0] - points[ind, 0]) ** 2 \
                                     + (centre[1] - points[ind, 1]) ** 2
                             points_cons.append((ind, dist_sq))
@@ -233,8 +260,9 @@ def idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
                             or (ind_y_nb < 0) 
                             or (ind_y_nb > (y_axis.size - 1))):
                             continue
-                        for k in range(num_iot[ind_y_nb, ind_x_nb]):
-                            ind = index_of_pts[ind_y_nb, ind_x_nb, k]
+                        for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
+                            ind = index_of_pts[
+                                indptr[ind_y_nb, ind_x_nb, 0] + k]
                             dist_sq = (centre[0] - points[ind, 0]) ** 2 \
                                     + (centre[1] - points[ind, 1]) ** 2
                             points_cons.append((ind, dist_sq))
@@ -312,7 +340,8 @@ def idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
 
 num_nn = 6
 data_in = z_reg_ip
-data_ip_nn = idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn)
+data_ip_nn = idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac,
+                              num_nn)
 # %timeit -n 1 -r 1 idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn)
 
 # Compare initial with re-interpolated data
@@ -347,10 +376,11 @@ plt.show()
 # triangulation
 ###############################################################################
 
-def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac):
+def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
+                       indices_con, indptr_con):
 
-    index_of_pts, num_iot = assign_points_to_cells(points, x_axis, y_axis,
-                                               grid_spac)
+    index_of_pts, indptr, num_ppgc \
+    = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
     
     # K-d tree as reference
     kd_tree = KDTree(points)
@@ -376,8 +406,8 @@ def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac):
             
             # Assign points to list
             points_cons = []
-            for i in range(num_iot[ind_y, ind_x]):
-                ind = index_of_pts[ind_y, ind_x, i]
+            for i in range(num_ppgc[ind_y, ind_x]):
+                ind = index_of_pts[indptr[ind_y, ind_x, 0] + i]
                 dist_sq = (centre[0] - points[ind, 0]) ** 2 \
                         + (centre[1] - points[ind, 1]) ** 2
                 points_cons.append((ind, dist_sq))
@@ -411,8 +441,9 @@ def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac):
                             or (ind_y_nb < 0)
                             or (ind_y_nb > (y_axis.size - 1))):
                             continue
-                        for k in range(num_iot[ind_y_nb, ind_x_nb]):
-                            ind = index_of_pts[ind_y_nb, ind_x_nb, k]
+                        for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
+                            ind = index_of_pts[
+                                indptr[ind_y_nb, ind_x_nb, 0] + k]
                             dist_sq = (centre[0] - points[ind, 0]) ** 2 \
                                     + (centre[1] - points[ind, 1]) ** 2
                             points_cons.append((ind, dist_sq))
@@ -427,8 +458,9 @@ def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac):
                             or (ind_y_nb < 0)
                             or (ind_y_nb > (y_axis.size - 1))):
                             continue
-                        for k in range(num_iot[ind_y_nb, ind_x_nb]):
-                            ind = index_of_pts[ind_y_nb, ind_x_nb, k]
+                        for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
+                            ind = index_of_pts[
+                                indptr[ind_y_nb, ind_x_nb, 0] + k]
                             dist_sq = (centre[0] - points[ind, 0]) ** 2 \
                                     + (centre[1] - points[ind, 1]) ** 2
                             points_cons.append((ind, dist_sq))
@@ -451,7 +483,8 @@ def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac):
                 raise ValueError("Error: NN-distances differ significantly")
 
             # Get indices / squared distances of connected points
-            ind_con = indices[indptr[index_nn]:indptr[index_nn + 1]]
+            ind_con = indices_con[
+                indptr_con[index_nn]:indptr_con[index_nn + 1]]
             dist_sq_con = (centre[0] - points[ind_con, 0]) ** 2 \
                         + (centre[1] - points[ind_con, 1]) ** 2
             index_nn = np.append(index_nn, ind_con)
@@ -511,8 +544,9 @@ def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac):
     return data_ip
 
 data_in = z_reg_ip
-data_ip_nc = idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac)
-# %timeit -n 1 -r 1 idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac)
+data_ip_nc = idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
+                                indices_con, indptr_con)
+# %timeit -n 1 -r 1 idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac, indices_con, indptr_con)
 
 # Compare initial with re-interpolated data
 fontsize = 13.0
