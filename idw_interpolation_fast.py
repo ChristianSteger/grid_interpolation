@@ -12,7 +12,7 @@ import matplotlib.gridspec as gridspec
 from scipy.spatial import Delaunay
 from scipy import interpolate
 from scipy.spatial import KDTree
-from numba import njit, prange
+from numba import njit
 
 mpl.style.use("classic") # type: ignore
 
@@ -37,7 +37,7 @@ num_points = 5_000
 
 # Regular grid
 grid_spac = 10
-# dx != dy so that below interpolation methods work correctly!!!
+# dx != dy so that below interpolation methods work correctly!
 x_axis = np.arange(-50.0, -50.0 + grid_spac * x_size, grid_spac)
 y_axis = np.arange(-30.0, -30.0 + grid_spac * y_size, grid_spac)
 print("Number of cells in regular grid: ", (x_axis.size * y_axis.size))
@@ -122,13 +122,13 @@ def assign_points_to_cells(points, x_axis, y_axis, grid_spac):
     num_ppgc = np.zeros((y_axis.size, x_axis.size), dtype=np.int32)
     # ppgc: points per grid cell
     for i in range(points.shape[0]):
-        ind_x = int((points[i, 0] - x_axis[0] + grid_spac / 2.0) 
+        ind_x = int((points[i, 0] - x_axis[0] + grid_spac / 2.0)
                     / grid_spac)
         if ind_x < 0:
             ind_x = 0
         if ind_x > (x_axis.size - 1):
             ind_x = x_axis.size - 1
-        ind_y = int((points[i, 1] - y_axis[0] + grid_spac / 2.0) 
+        ind_y = int((points[i, 1] - y_axis[0] + grid_spac / 2.0)
                     / grid_spac)
         if ind_y < 0:
             ind_y = 0
@@ -144,18 +144,18 @@ def assign_points_to_cells(points, x_axis, y_axis, grid_spac):
             indptr[ind_y, ind_x, 0] = cumsum
             cumsum += num_ppgc[ind_y, ind_x]
             indptr[ind_y, ind_x, 1] = cumsum
-    
+
     # Assign index of points
     index_of_pts = np.empty(x_axis.size * y_axis.size, dtype=np.int32)
     num_ppgc[:] = 0
     for i in range(points.shape[0]):
-        ind_x = int((points[i, 0] - x_axis[0] + grid_spac / 2.0) 
+        ind_x = int((points[i, 0] - x_axis[0] + grid_spac / 2.0)
                     / grid_spac)
         if ind_x < 0:
             ind_x = 0
         if ind_x > (x_axis.size - 1):
             ind_x = x_axis.size - 1
-        ind_y = int((points[i, 1] - y_axis[0] + grid_spac / 2.0) 
+        ind_y = int((points[i, 1] - y_axis[0] + grid_spac / 2.0)
                     / grid_spac)
         if ind_y < 0:
             ind_y = 0
@@ -170,20 +170,130 @@ index_of_pts, indptr, num_ppgc \
     = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
 # %timeit assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
 
+# Find 'n' nearest neighbours from grid cell centre and their distances
+@njit
+def nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, num_nn,
+                           x_axis, y_axis, grid_spac, ind_x, ind_y):
+
+    index_nn = np.empty(num_nn, dtype=np.int32)
+    index_nn.fill(-1)
+    dist_sq_nn = np.empty(num_nn)
+    dist_sq_nn.fill(np.inf)
+    centre = (x_axis[ind_x], y_axis[ind_y])
+    # list_len_max = 0
+
+    # -------------------------------------------------------------------------
+    # Centre cell
+    # -------------------------------------------------------------------------
+
+    level = 0
+    radius_sq = (grid_spac * (level + 0.5)) ** 2
+
+    # Assign points to list
+    points_cons = []
+    for i in range(num_ppgc[ind_y, ind_x]):
+        ind = index_of_pts[indptr[ind_y, ind_x, 0] + i]
+        dist_sq = (centre[0] - points[ind, 0]) ** 2 \
+                + (centre[1] - points[ind, 1]) ** 2
+        points_cons.append((ind, dist_sq))
+        # if len(points_cons) > list_len_max:
+        #     list_len_max = len(points_cons)
+
+    # Potentially add new points
+    points_cons_next = []
+    for ind, dist_sq in points_cons:
+        if (dist_sq > radius_sq):
+            points_cons_next.append((ind, dist_sq))
+            # if len(points_cons_next) > list_len_max:
+            #     list_len_max = len(points_cons_next)
+        elif (dist_sq < dist_sq_nn[-1]):
+            ind_is = (dist_sq_nn < dist_sq).sum() # insertion index
+            dist_sq_nn[ind_is + 1:] = dist_sq_nn[ind_is:-1]
+            dist_sq_nn[ind_is] = dist_sq
+            index_nn[ind_is + 1:] = index_nn[ind_is:-1]
+            index_nn[ind_is] = ind
+
+    num_nn_sel = (index_nn != -1).sum()
+
+    # -------------------------------------------------------------------------
+    # Neighbouring cells of 'frame'
+    # -------------------------------------------------------------------------
+    while num_nn_sel != num_nn:
+
+        level += 1
+        radius_sq = (grid_spac * (level + 0.5)) ** 2
+
+        # Assign points from bottom and top cells to list
+        points_cons = points_cons_next.copy()
+        for i in (-level, +level):  # y-axis
+            for j in range(-level, level + 1):  # x-axis
+                ind_y_nb = ind_y + i
+                ind_x_nb = ind_x + j
+                if ((ind_x_nb < 0) or (ind_x_nb > (x_axis.size - 1))
+                    or (ind_y_nb < 0) or (ind_y_nb > (y_axis.size - 1))):
+                    continue
+                for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
+                    ind = index_of_pts[indptr[ind_y_nb, ind_x_nb, 0] + k]
+                    dist_sq = (centre[0] - points[ind, 0]) ** 2 \
+                            + (centre[1] - points[ind, 1]) ** 2
+                    points_cons.append((ind, dist_sq))
+
+        # Assign points from left and right cells to list
+        for j in (-level, +level):  # x-axis
+            for i in range(-level + 1, level):  # y-axis
+                ind_y_nb = ind_y + i
+                ind_x_nb = ind_x + j
+                if ((ind_x_nb < 0) or (ind_x_nb > (x_axis.size - 1))
+                    or (ind_y_nb < 0) or (ind_y_nb > (y_axis.size - 1))):
+                    continue
+                for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
+                    ind = index_of_pts[indptr[ind_y_nb, ind_x_nb, 0] + k]
+                    dist_sq = (centre[0] - points[ind, 0]) ** 2 \
+                            + (centre[1] - points[ind, 1]) ** 2
+                    points_cons.append((ind, dist_sq))
+                    # if len(points_cons) > list_len_max:
+                    #     list_len_max = len(points_cons)
+
+        # Potentially add new points
+        points_cons_next = []
+        for ind, dist_sq in points_cons:
+            if (dist_sq > radius_sq):
+                points_cons_next.append((ind, dist_sq))
+                # if len(points_cons_next) > list_len_max:
+                #     list_len_max = len(points_cons_next)
+            elif (dist_sq < dist_sq_nn[-1]):
+                ind_is = (dist_sq_nn < dist_sq).sum() # insertion index
+                dist_sq_nn[ind_is + 1:] = dist_sq_nn[ind_is:-1]
+                dist_sq_nn[ind_is] = dist_sq
+                index_nn[ind_is + 1:] = index_nn[ind_is:-1]
+                index_nn[ind_is] = ind
+
+        num_nn_sel = (index_nn != -1).sum()
+
+    # print("Maximum list length: ", list_len_max)
+
+    return index_nn, np.sqrt(dist_sq_nn)
+
+index_nn, dist_nn = nearest_neighbours_reg(
+                points, index_of_pts, indptr, num_ppgc, 6,
+                x_axis, y_axis, grid_spac, 45, 56)
+# %timeit nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, 6, x_axis, y_axis, grid_spac, 45, 56)
+# %timeit nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, 1, x_axis, y_axis, grid_spac, 45, 56)
+# nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, 25, x_axis, y_axis, grid_spac, 45, 56)
+
 ###############################################################################
 # IDW interpolation from 'n' nearest neighbours
 ###############################################################################
 
-def idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
+def idw_reg_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
 
     index_of_pts, indptr, num_ppgc \
-    = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
-    
+        = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
+
     # K-d tree as reference
     kd_tree = KDTree(points)
 
-    index_nn = np.empty(num_nn, dtype=np.int32)
-    dist_sq_nn = np.empty(num_nn)
+    # Loop through grid cells
     data_ip = np.empty((y_axis.size, x_axis.size))
     for ind_y in range(y_axis.size):
         for ind_x in range(x_axis.size):
@@ -191,105 +301,20 @@ def idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
             # ind_x = 45
             # ind_y = 56
 
-            index_nn.fill(-1)
-            dist_sq_nn.fill(np.inf)
-            centre = (x_axis[ind_x], y_axis[ind_y])
-
-            # -----------------------------------------------------------------
-            # Centre cell
-            # -----------------------------------------------------------------
-
-            level = 0
-            radius_sq = (grid_spac * (level + 0.5)) ** 2
-        
-            # Assign points to list
-            points_cons = []
-            for i in range(num_ppgc[ind_y, ind_x]):
-                ind = index_of_pts[indptr[ind_y, ind_x, 0] + i]
-                dist_sq = (centre[0] - points[ind, 0]) ** 2 \
-                        + (centre[1] - points[ind, 1]) ** 2
-                points_cons.append((ind, dist_sq))
-
-            # Potentially add new points
-            points_cons_next = []
-            for ind, dist_sq in points_cons:
-                if (dist_sq > radius_sq):
-                    points_cons_next.append((ind, dist_sq))
-                elif (dist_sq < dist_sq_nn[-1]):
-                    ind_is = (dist_sq_nn < dist_sq).sum() # insertion index
-                    dist_sq_nn[ind_is + 1:] = dist_sq_nn[ind_is:-1]
-                    dist_sq_nn[ind_is] = dist_sq
-                    index_nn[ind_is + 1:] = index_nn[ind_is:-1]
-                    index_nn[ind_is] = ind
-
-            num_nn_sel = (index_nn != -1).sum()
-
-            # -----------------------------------------------------------------
-            # Neighbouring cells of 'frame'
-            # -----------------------------------------------------------------
-            while num_nn_sel != num_nn:
-
-                level += 1
-                radius_sq = (grid_spac * (level + 0.5)) ** 2
-
-                # Assign points from bottom and top cells to list
-                points_cons = points_cons_next.copy()
-                for i in (-level, +level):  # y-axis
-                    for j in range(-level, level + 1):  # x-axis
-                        ind_y_nb = ind_y + i
-                        ind_x_nb = ind_x + j
-                        if ((ind_x_nb < 0)
-                            or (ind_x_nb > (x_axis.size - 1)) 
-                            or (ind_y_nb < 0) 
-                            or (ind_y_nb > (y_axis.size - 1))):
-                            continue
-                        for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
-                            ind = index_of_pts[
-                                indptr[ind_y_nb, ind_x_nb, 0] + k]
-                            dist_sq = (centre[0] - points[ind, 0]) ** 2 \
-                                    + (centre[1] - points[ind, 1]) ** 2
-                            points_cons.append((ind, dist_sq))
-
-                # Assign points from left and right cells to list
-                for j in (-level, +level):  # x-axis
-                    for i in range(-level + 1, level):  # y-axis
-                        ind_y_nb = ind_y + i
-                        ind_x_nb = ind_x + j
-                        if ((ind_x_nb < 0)
-                            or (ind_x_nb > (x_axis.size - 1)) 
-                            or (ind_y_nb < 0) 
-                            or (ind_y_nb > (y_axis.size - 1))):
-                            continue
-                        for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
-                            ind = index_of_pts[
-                                indptr[ind_y_nb, ind_x_nb, 0] + k]
-                            dist_sq = (centre[0] - points[ind, 0]) ** 2 \
-                                    + (centre[1] - points[ind, 1]) ** 2
-                            points_cons.append((ind, dist_sq))
-
-                # Potentially add new points
-                points_cons_next = []
-                for ind, dist_sq in points_cons:
-                    if (dist_sq > radius_sq):
-                        points_cons_next.append((ind, dist_sq))
-                    elif(dist_sq < dist_sq_nn[-1]):
-                        ind_is = (dist_sq_nn < dist_sq).sum() # insertion index
-                        dist_sq_nn[ind_is + 1:] = dist_sq_nn[ind_is:-1]
-                        dist_sq_nn[ind_is] = dist_sq
-                        index_nn[ind_is + 1:] = index_nn[ind_is:-1]
-                        index_nn[ind_is] = ind               
-
-                num_nn_sel = (index_nn != -1).sum()
+            # Find 'n' nearest neighbours
+            index_nn, dist_nn = nearest_neighbours_reg(
+                points, index_of_pts, indptr, num_ppgc, num_nn,
+                x_axis, y_axis, grid_spac, ind_x, ind_y)
 
             # Compare with k-d tree
+            centre = (x_axis[ind_x], y_axis[ind_y])
             dist_kd, indices_kd = kd_tree.query(centre, k=num_nn)
             if (not np.all(index_nn == indices_kd)):
                 raise ValueError("Error: (order of) point indices differ")
-            if (np.abs(dist_sq_nn - (dist_kd ** 2)).max() > 1e-10):
+            if (np.abs(dist_nn - dist_kd).max() > 1e-10):
                 raise ValueError("Error: NN-distances differ significantly")
 
             # Interpolate data
-            dist_nn = np.sqrt(dist_sq_nn)
             if dist_nn[0] == 0.0:  # avoid division by zero
                 data_ip[ind_y, ind_x] = data_in[index_nn[0]]
             else:
@@ -310,26 +335,12 @@ def idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
             # plt.scatter(points[:, 0], points[:, 1], color="black", s=25,
             #             zorder=2)
             # # ---------------------------------------------------------------
-            # ind_in = np.array([ind for ind, dist_sq in points_cons])
-            # if ind_in.size > 0:
-            #     plt.scatter(points[ind_in, 0], points[ind_in, 1],
-            #                 color="green", s=100, zorder=1)
-            # circle = plt.Circle(centre, np.sqrt(radius_sq), # type: ignore
-            #                     facecolor="none", edgecolor="green", lw=1.5)
-            # ax.add_patch(circle)
-            # # ---------------------------------------------------------------
-            # ind_out = np.array([ind for ind, dist_sq in points_cons_next])
-            # if ind_out.size > 0:
-            #     plt.scatter(points[ind_out, 0], points[ind_out, 1],
-            #                 color="blue", s=100, zorder=1)
-            # # ---------------------------------------------------------------
             # plt.scatter(x_axis[ind_x], y_axis[ind_y], color="red", s=200,
             #             marker="*", zorder=1)
             # index_nn_tmp = index_nn[index_nn != -1]
             # plt.scatter(points[index_nn_tmp, 0], points[index_nn_tmp, 1],
             #             color="red", s=100, zorder=1)
-            # radius = np.sqrt(dist_sq_nn[(num_nn_sel - 1)])
-            # circle = plt.Circle(centre, radius, # type: ignore
+            # circle = plt.Circle(centre, dist_nn[-1], # type: ignore
             #                     facecolor="none", edgecolor="red", lw=1.5)
             # ax.add_patch(circle)
             # # ---------------------------------------------------------------
@@ -340,9 +351,9 @@ def idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
 
 num_nn = 6
 data_in = z_reg_ip
-data_ip_nn = idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac,
-                              num_nn)
-# %timeit -n 1 -r 1 idw_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn)
+data_ip_nn = idw_reg_neighbours_n(points, data_in, x_axis, y_axis, grid_spac,
+                                  num_nn)
+# %timeit -n 1 -r 1 idw_reg_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn)
 
 # Compare initial with re-interpolated data
 fontsize = 13.0
@@ -372,19 +383,20 @@ cb = mpl.colorbar.ColorbarBase(ax2, cmap=cmap, norm=norm, # type: ignore
 plt.show()
 
 ###############################################################################
-# IDW interpolation from nearest neighbour and points connected via 
+# IDW interpolation from nearest neighbour and points connected via
 # triangulation
 ###############################################################################
 
-def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
-                       indices_con, indptr_con):
+def idw_reg_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
+                           indices_con, indptr_con):
 
     index_of_pts, indptr, num_ppgc \
-    = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
-    
+        = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
+
     # K-d tree as reference
     kd_tree = KDTree(points)
 
+    # Loop through grid cells
     data_ip = np.empty((y_axis.size, x_axis.size))
     for ind_y in range(y_axis.size):
         for ind_x in range(x_axis.size):
@@ -392,106 +404,28 @@ def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
             # ind_x = 45
             # ind_y = 56
 
-            index_nn = -1
-            dist_sq_nn = np.inf
-            centre = (x_axis[ind_x], y_axis[ind_y])
-            num_nn_sel = 0
-
-            # -----------------------------------------------------------------
-            # Centre cell
-            # -----------------------------------------------------------------
-
-            level = 0
-            radius_sq = (grid_spac * (level + 0.5)) ** 2
-            
-            # Assign points to list
-            points_cons = []
-            for i in range(num_ppgc[ind_y, ind_x]):
-                ind = index_of_pts[indptr[ind_y, ind_x, 0] + i]
-                dist_sq = (centre[0] - points[ind, 0]) ** 2 \
-                        + (centre[1] - points[ind, 1]) ** 2
-                points_cons.append((ind, dist_sq))
-
-            # Potentially add new points
-            points_cons_next = []
-            for ind, dist_sq in points_cons:
-                if (dist_sq > radius_sq):
-                    points_cons_next.append((ind, dist_sq))
-                elif (dist_sq < dist_sq_nn):
-                    dist_sq_nn = dist_sq
-                    index_nn = ind
-                    num_nn_sel = 1
-
-            # -----------------------------------------------------------------
-            # Neighbouring cells of 'frame'
-            # -----------------------------------------------------------------
-            while num_nn_sel == 0:
-
-                level += 1
-                radius_sq = (grid_spac * (level + 0.5)) ** 2
-
-                # Assign points from bottom and top cells to list
-                points_cons = points_cons_next.copy()
-                for i in (-level, +level):  # y-axis
-                    for j in range(-level, level + 1):  # x-axis
-                        ind_y_nb = ind_y + i
-                        ind_x_nb = ind_x + j
-                        if ((ind_x_nb < 0)
-                            or (ind_x_nb > (x_axis.size - 1)) 
-                            or (ind_y_nb < 0)
-                            or (ind_y_nb > (y_axis.size - 1))):
-                            continue
-                        for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
-                            ind = index_of_pts[
-                                indptr[ind_y_nb, ind_x_nb, 0] + k]
-                            dist_sq = (centre[0] - points[ind, 0]) ** 2 \
-                                    + (centre[1] - points[ind, 1]) ** 2
-                            points_cons.append((ind, dist_sq))
-
-                # Assign points from left and right cells to list
-                for j in (-level, +level):  # x-axis
-                    for i in range(-level + 1, level):  # y-axis
-                        ind_y_nb = ind_y + i
-                        ind_x_nb = ind_x + j
-                        if ((ind_x_nb < 0)
-                            or (ind_x_nb > (x_axis.size - 1)) 
-                            or (ind_y_nb < 0)
-                            or (ind_y_nb > (y_axis.size - 1))):
-                            continue
-                        for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
-                            ind = index_of_pts[
-                                indptr[ind_y_nb, ind_x_nb, 0] + k]
-                            dist_sq = (centre[0] - points[ind, 0]) ** 2 \
-                                    + (centre[1] - points[ind, 1]) ** 2
-                            points_cons.append((ind, dist_sq))
-
-                # Potentially add new points
-                points_cons_next = []
-                for ind, dist_sq in points_cons:
-                    if (dist_sq > radius_sq):
-                        points_cons_next.append((ind, dist_sq))
-                    elif (dist_sq < dist_sq_nn):
-                        dist_sq_nn = dist_sq
-                        index_nn = ind
-                        num_nn_sel = 1      
+            # Find nearest neighbour
+            index_nn, dist_nn = nearest_neighbours_reg(
+                points, index_of_pts, indptr, num_ppgc, 1,
+                x_axis, y_axis, grid_spac, ind_x, ind_y)
 
             # Compare with k-d tree
+            centre = (x_axis[ind_x], y_axis[ind_y])
             dist_kd, indices_kd = kd_tree.query(centre, k=1)
             if (not (index_nn == indices_kd)):
                 raise ValueError("Error: (order of) point indices differ")
-            if (np.abs(dist_sq_nn - (dist_kd ** 2)) > 1e-10):
+            if (np.abs(dist_nn - dist_kd) > 1e-10):
                 raise ValueError("Error: NN-distances differ significantly")
 
-            # Get indices / squared distances of connected points
+            # Get indices and distances of connected points
             ind_con = indices_con[
-                indptr_con[index_nn]:indptr_con[index_nn + 1]]
-            dist_sq_con = (centre[0] - points[ind_con, 0]) ** 2 \
-                        + (centre[1] - points[ind_con, 1]) ** 2
+                indptr_con[index_nn[0]]:indptr_con[index_nn[0] + 1]]
+            dist_con = np.sqrt((centre[0] - points[ind_con, 0]) ** 2 \
+                               + (centre[1] - points[ind_con, 1]) ** 2)
             index_nn = np.append(index_nn, ind_con)
-            dist_sq_nn = np.append(dist_sq_nn, dist_sq_con)
+            dist_nn = np.append(dist_nn, dist_con)
 
             # Interpolate data
-            dist_nn = np.sqrt(dist_sq_nn)
             if dist_nn[0] == 0.0:  # avoid division by zero
                 data_ip[ind_y, ind_x] = data_in[index_nn[0]]
             else:
@@ -512,19 +446,6 @@ def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
             # plt.scatter(points[:, 0], points[:, 1], color="black", s=25,
             #             zorder=2)
             # # ---------------------------------------------------------------
-            # ind_in = np.array([ind for ind, dist_sq in points_cons])
-            # if ind_in.size > 0:
-            #     plt.scatter(points[ind_in, 0], points[ind_in, 1],
-            #                 color="green", s=100, zorder=1)
-            # circle = plt.Circle(centre, np.sqrt(radius_sq), # type: ignore
-            #                     facecolor="none", edgecolor="green", lw=1.5)
-            # ax.add_patch(circle)
-            # # ---------------------------------------------------------------
-            # ind_out = np.array([ind for ind, dist_sq in points_cons_next])
-            # if ind_out.size > 0:
-            #     plt.scatter(points[ind_out, 0], points[ind_out, 1],
-            #                 color="blue", s=100, zorder=1)
-            # # ---------------------------------------------------------------
             # plt.scatter(x_axis[ind_x], y_axis[ind_y], color="red", s=200,
             #             marker="*", zorder=1)
             # index_nn_tmp = index_nn[index_nn != -1]
@@ -533,8 +454,7 @@ def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
             # plt.scatter(points[index_nn_tmp[0], 0],
             #             points[index_nn_tmp[0], 1],
             #             color="red", s=250, zorder=1)
-            # circle = plt.Circle(centre, # type: ignore
-            #                     np.sqrt(dist_sq_nn[(num_nn_sel - 1)]),
+            # circle = plt.Circle(centre, dist_nn[0], # type: ignore
             #                     facecolor="none", edgecolor="red", lw=1.5)
             # ax.add_patch(circle)
             # # ---------------------------------------------------------------
@@ -544,9 +464,9 @@ def idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
     return data_ip
 
 data_in = z_reg_ip
-data_ip_nc = idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
-                                indices_con, indptr_con)
-# %timeit -n 1 -r 1 idw_neighbours_con(points, data_in, x_axis, y_axis, grid_spac, indices_con, indptr_con)
+data_ip_nc = idw_reg_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
+                                    indices_con, indptr_con)
+# %timeit -n 1 -r 1 idw_reg_neighbours_con(points, data_in, x_axis, y_axis, grid_spac, indices_con, indptr_con)
 
 # Compare initial with re-interpolated data
 fontsize = 13.0
