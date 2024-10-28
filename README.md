@@ -12,11 +12,12 @@ conda create -n grid_interpolation numpy scipy matplotlib ipython gfortran meson
 ## Compile Fortran code and build shared library for F2PY
 ```bash
 gfortran -shared -O3 -o libkd_tree.so -fPIC kd_tree.f90
+gfortran -shared -O3 -o libidw_interp_esrg.so -fPIC idw_interp_esrg.f90
 cwd=$(pwd)
-f2py -c --fcompiler=gfortran -L${cwd}/ -I${cwd}/ -lkd_tree -m interpolation interpolation.f90
+f2py -c --fcompiler=gfortran -L${cwd}/ -I${cwd}/ -lkd_tree -lidw_interp_esrg -m interpolation interpolation.f90
 ```
 
 ## Clean build
 ```bash
-rm *.so kd_tree.mod
+rm *.so *.mod
 ```

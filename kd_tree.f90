@@ -1,3 +1,8 @@
+! Description: K-d tree implementation to remap data from unstructured grid to
+!							 arbitrary grid via inverse distance weighted interpolation
+!
+!	Author: Christian R. Steger, October 2024
+
 MODULE kd_tree
 
 	IMPLICIT NONE
@@ -8,12 +13,12 @@ MODULE kd_tree
 	TYPE :: kd_node
 		REAL :: point(2)
 		INTEGER :: index
-		TYPE(kd_node), POINTER :: left => null()
-		TYPE(kd_node), POINTER :: right => null()
+		TYPE(kd_node), POINTER :: left => NULL()
+		TYPE(kd_node), POINTER :: right => NULL()
 	END TYPE kd_node
 
 	TYPE :: kdtree_type
-		TYPE(kd_node), POINTER :: root => null()
+		TYPE(kd_node), POINTER :: root => NULL()
 	END TYPE kdtree_type
 
 	CONTAINS
@@ -24,16 +29,16 @@ MODULE kd_tree
 
 	RECURSIVE SUBROUTINE build_kd_tree(tree, points, num_points, depth, index)
 
-		TYPE(kdtree_type), INTENT(inout) :: tree
-		REAL, DIMENSION(:, :), INTENT(in) :: points
-		INTEGER, INTENT(in) :: num_points
-		INTEGER, INTENT(in) :: depth
-		INTEGER, DIMENSION(:), INTENT(in) :: index
+		TYPE(kdtree_type), INTENT(INOUT) :: tree
+		REAL, DIMENSION(:, :), INTENT(IN) :: points ! (2, # of pts)
+		INTEGER, INTENT(IN) :: num_points
+		INTEGER, INTENT(IN) :: depth
+		INTEGER, DIMENSION(:), INTENT(IN) :: index
 
 		INTEGER :: axis, ind_median
-		REAL, DIMENSION(:, :), allocatable :: sorted_points
+		REAL, DIMENSION(:, :), ALLOCATABLE :: sorted_points
 		TYPE(kd_node), POINTER :: node
-		INTEGER, DIMENSION(:), allocatable :: sorted_index
+		INTEGER, DIMENSION(:), ALLOCATABLE :: sorted_index
 
 		IF (num_points <= 0) RETURN
 
@@ -72,19 +77,19 @@ MODULE kd_tree
 	RECURSIVE SUBROUTINE build_kd_tree_sub(node, points, num_points, depth, &
 		index)
 
-		TYPE(kd_node), POINTER :: node
-		REAL, DIMENSION(:, :), INTENT(in) :: points
-		INTEGER, INTENT(in) :: num_points
-		INTEGER, INTENT(in) :: depth
-		INTEGER, DIMENSION(:), INTENT(in) :: index
+		REAL, DIMENSION(:, :), INTENT(IN) :: points ! (2, # of pts)
+		INTEGER, INTENT(IN) :: num_points
+		INTEGER, INTENT(IN) :: depth
+		INTEGER, DIMENSION(:), INTENT(IN) :: index
 
+		TYPE(kd_node), POINTER :: node
 		TYPE(kdtree_type) :: tree
 
 		IF (num_points > 0) THEN
 			CALL build_kd_tree(tree, points, num_points, depth, index)
 			node => tree%root
 		ELSE
-			node => null()
+			node => NULL()
 		ENDIF
 
 	END SUBROUTINE build_kd_tree_sub
@@ -92,9 +97,10 @@ MODULE kd_tree
 	RECURSIVE SUBROUTINE partition_iter(points, ind_left, ind_right, ind_k, &
 		axis, index)
 
-		REAL, DIMENSION(:, :), INTENT(inout) :: points
-		INTEGER :: ind_left, ind_right, ind_k, axis
-		INTEGER, DIMENSION(:), INTENT(inout) :: index
+		REAL, DIMENSION(:, :), INTENT(INOUT) :: points ! (2, # of pts)
+		INTEGER, INTENT(IN) :: ind_left, ind_right, ind_k, axis
+		INTEGER, DIMENSION(:), INTENT(INOUT) :: index
+
 		INTEGER :: ind_pivot, ind_store
 		REAL :: value_pivot
 		REAL :: temp_1d
@@ -149,19 +155,19 @@ MODULE kd_tree
 	END SUBROUTINE partition_iter
 
   ! ---------------------------------------------------------------------------
-  ! Query tree for n nearest neighbours
+  ! Query tree for nearest neighbour(s)
   ! ---------------------------------------------------------------------------
 
 	RECURSIVE SUBROUTINE nearest_neighbours(node, point_target, depth, &
 		neighbours, num_neighbours, neighbours_index)
 
-		TYPE(kd_node), POINTER :: node
-		REAL, DIMENSION(2), INTENT(in) :: point_target
-		INTEGER, INTENT(in) :: depth
-		REAL, DIMENSION(:, :), INTENT(inout) :: neighbours
-		INTEGER, INTENT(in) :: num_neighbours
-		INTEGER, DIMENSION(:), INTENT(inout) :: neighbours_index
+		REAL, DIMENSION(2), INTENT(IN) :: point_target
+		INTEGER, INTENT(IN) :: depth
+		REAL, DIMENSION(:, :), INTENT(INOUT) :: neighbours
+		INTEGER, INTENT(IN) :: num_neighbours
+		INTEGER, DIMENSION(:), INTENT(INOUT) :: neighbours_index
 
+    TYPE(kd_node), POINTER :: node
 		REAL :: dist_sqrt, diff
 		INTEGER :: axis
 
@@ -177,7 +183,7 @@ MODULE kd_tree
 		axis = mod(depth, 2)
 		diff = point_target(axis+1) - node%point(axis+1)
 
-		! Traverse the KD-tree based on the target point's value relative to the
+		! Traverse the k-d tree based on the target point's value relative to the
 		! splitting axis
 		IF (diff < 0.0) THEN
 			CALL nearest_neighbours(node%left, point_target, depth + 1, &
@@ -202,19 +208,19 @@ MODULE kd_tree
 	SUBROUTINE insert_neighbour(neighbours, dist_sqrt, point, index, &
 		num_neighbours, neighbours_index)
 
-		REAL, DIMENSION(:, :), INTENT(inout) :: neighbours
-		REAL, INTENT(in) :: dist_sqrt
-		REAL, INTENT(in) :: point(2)
-		INTEGER, INTENT(in) :: index
-		INTEGER, INTENT(in) :: num_neighbours
-		INTEGER :: i
-		INTEGER, DIMENSION(:), INTENT(inout) :: neighbours_index
+		REAL, DIMENSION(:, :), INTENT(INOUT) :: neighbours
+		REAL, INTENT(IN) :: dist_sqrt
+		REAL, INTENT(IN) :: point(2)
+		INTEGER, INTENT(IN) :: index
+		INTEGER, INTENT(IN) :: num_neighbours
+		INTEGER, DIMENSION(:), INTENT(INOUT) :: neighbours_index
+
+    INTEGER :: i
 
     ! Find position to insert if the distance is smaller than the maximum
     ! stored distance
 		IF ((size(neighbours, 2) < num_neighbours) .or. &
 			(dist_sqrt < maxval(neighbours(3, :)))) THEN
-			! Shift points and distances if needed
 			DO i = min(num_neighbours, size(neighbours, 2)), 2, -1
 				IF (dist_sqrt < neighbours(3, i - 1)) THEN
 					neighbours(:, i) = neighbours(:, i - 1)
@@ -236,10 +242,11 @@ MODULE kd_tree
 	! Squared distance between points
 	PURE FUNCTION distance_squared(point1, point2) result(dist_sqrt)
 
-		REAL, INTENT(in) :: point1(2), point2(2)
+		REAL, INTENT(IN) :: point1(2), point2(2)
+
 		REAL :: dist_sqrt
 
-		dist_sqrt = (point1(1) - point2(1))**2 + (point1(2) - point2(2))**2
+		dist_sqrt = (point1(1) - point2(1)) ** 2 + (point1(2) - point2(2)) ** 2
 
 	END FUNCTION distance_squared
 
@@ -259,8 +266,8 @@ MODULE kd_tree
 		CALL deallocate_kd_tree(node%right)
 
 		! Nullify pointers to the children
-		node%left => null()
-		node%right => null()
+		node%left => NULL()
+		node%right => NULL()
 
 		DEALLOCATE(node)
 
@@ -268,13 +275,13 @@ MODULE kd_tree
 
 	SUBROUTINE free_kdtree(tree)
 
-		TYPE(kdtree_type), INTENT(inout) :: tree
+		TYPE(kdtree_type), INTENT(INOUT) :: tree
 
 		! Deallocate the entire tree starting from the root
 		CALL deallocate_kd_tree(tree%root)
 
 		! Nullify the root pointer of the tree
-		tree%root => null()
+		tree%root => NULL()
 
 	END SUBROUTINE free_kdtree
 

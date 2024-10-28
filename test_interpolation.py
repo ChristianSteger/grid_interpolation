@@ -80,7 +80,8 @@ z_tri_ip = ip_fortran.bilinear(
     np.asfortranarray(centroids))
 if np.any(np.any(z_tri_ip == -9999.0)):
     print("Warning: Invalid values in interpolated data")
-print(np.abs(z_tri_ip - z_tri_ip_scipy).max())
+dev_abs_max = np.abs(z_tri_ip - z_tri_ip_scipy).max()
+print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
 
 # IDW interpolation (unstructured -> regular grid) (Scipy)
 num_nn = 6  # number of nearest neighbours
@@ -95,8 +96,10 @@ z_reg_ip_scipy = (((z_tri_ip[indices] / dist)).sum(axis=1)
 z_reg_ip = ip_fortran.idw_kdtree(
                 np.asfortranarray(centroids.transpose()),
                 z_tri_ip, x_axis, y_axis, num_nn)
-print(np.abs(z_reg_ip - z_reg_ip_scipy).max())
-print(np.abs(z_reg_ip - z_reg_ip_scipy).mean())
+dev_abs_max = np.abs(z_reg_ip - z_reg_ip_scipy).max()
+print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
+dev_abs_mean = np.abs(z_reg_ip - z_reg_ip_scipy).mean()
+print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
 
 # Colormap (absolute)
 cmap = plt.get_cmap("Spectral")

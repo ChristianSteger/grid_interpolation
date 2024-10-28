@@ -16,6 +16,9 @@ from numba import njit
 
 mpl.style.use("classic") # type: ignore
 
+# Load required Fortran-functions
+from interpolation import interpolation as ip_fortran # type: ignore
+
 ###############################################################################
 # Create example data and grid
 ###############################################################################
@@ -26,13 +29,13 @@ mpl.style.use("classic") # type: ignore
 # y_size = 8
 # num_points = 50
 # ----- small grid/mesh -----
-x_size = 110
-y_size = 91
-num_points = 5_000
+# x_size = 110
+# y_size = 91
+# num_points = 5_000
 # ----- large grid/mesh -----
-# x_size = 770
-# y_size = 637
-# num_points = 250_000
+x_size = 770
+y_size = 637
+num_points = 250_000
 # ----------------------
 
 # Regular grid
@@ -114,11 +117,11 @@ plt.show()
  # Auxiliary functions
 ###############################################################################
 
- # Assign points to regular grid cells (old)
+ # Assign points to regular grid cells
 @njit
 def assign_points_to_cells(points, x_axis, y_axis, grid_spac):
 
-    # Compute number of points in each cells
+    # Compute number of points in each cell
     num_ppgc = np.zeros((y_axis.size, x_axis.size), dtype=np.int32)
     # ppgc: points per grid cell
     for i in range(points.shape[0]):
@@ -137,16 +140,15 @@ def assign_points_to_cells(points, x_axis, y_axis, grid_spac):
         num_ppgc[ind_y, ind_x] += 1
 
     # Compute index pointer array
-    indptr = np.empty((y_axis.size, x_axis.size, 2), dtype=np.int32)
+    indptr = np.empty((y_axis.size, x_axis.size), dtype=np.int32)
     cumsum = 0
     for ind_y in range(y_axis.size):
         for ind_x in range(x_axis.size):
-            indptr[ind_y, ind_x, 0] = cumsum
+            indptr[ind_y, ind_x] = cumsum
             cumsum += num_ppgc[ind_y, ind_x]
-            indptr[ind_y, ind_x, 1] = cumsum
 
     # Assign index of points
-    index_of_pts = np.empty(x_axis.size * y_axis.size, dtype=np.int32)
+    index_of_pts = np.empty(points.shape[0], dtype=np.int32)
     num_ppgc[:] = 0
     for i in range(points.shape[0]):
         ind_x = int((points[i, 0] - x_axis[0] + grid_spac / 2.0)
@@ -161,14 +163,13 @@ def assign_points_to_cells(points, x_axis, y_axis, grid_spac):
             ind_y = 0
         if ind_y > (y_axis.size - 1):
             ind_y = y_axis.size - 1
-        index_of_pts[indptr[ind_y, ind_x, 0] + num_ppgc[ind_y, ind_x]] = i
+        index_of_pts[indptr[ind_y, ind_x] + num_ppgc[ind_y, ind_x]] = i
         num_ppgc[ind_y, ind_x] += 1
 
     return index_of_pts, indptr, num_ppgc
 
 index_of_pts, indptr, num_ppgc \
     = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
-# %timeit assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
 
 # Find 'n' nearest neighbours from grid cell centre and their distances
 @njit
@@ -183,7 +184,7 @@ def nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, num_nn,
     # list_len_max = 0
 
     # -------------------------------------------------------------------------
-    # Centre cell
+    # Process centre grid cell
     # -------------------------------------------------------------------------
 
     level = 0
@@ -192,7 +193,7 @@ def nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, num_nn,
     # Assign points to list
     points_cons = []
     for i in range(num_ppgc[ind_y, ind_x]):
-        ind = index_of_pts[indptr[ind_y, ind_x, 0] + i]
+        ind = index_of_pts[indptr[ind_y, ind_x] + i]
         dist_sq = (centre[0] - points[ind, 0]) ** 2 \
                 + (centre[1] - points[ind, 1]) ** 2
         points_cons.append((ind, dist_sq))
@@ -216,7 +217,7 @@ def nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, num_nn,
     num_nn_sel = (index_nn != -1).sum()
 
     # -------------------------------------------------------------------------
-    # Neighbouring cells of 'frame'
+    # Process grid cells of surrounding 'frame(s)'
     # -------------------------------------------------------------------------
     while num_nn_sel != num_nn:
 
@@ -233,7 +234,7 @@ def nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, num_nn,
                     or (ind_y_nb < 0) or (ind_y_nb > (y_axis.size - 1))):
                     continue
                 for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
-                    ind = index_of_pts[indptr[ind_y_nb, ind_x_nb, 0] + k]
+                    ind = index_of_pts[indptr[ind_y_nb, ind_x_nb] + k]
                     dist_sq = (centre[0] - points[ind, 0]) ** 2 \
                             + (centre[1] - points[ind, 1]) ** 2
                     points_cons.append((ind, dist_sq))
@@ -247,7 +248,7 @@ def nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, num_nn,
                     or (ind_y_nb < 0) or (ind_y_nb > (y_axis.size - 1))):
                     continue
                 for k in range(num_ppgc[ind_y_nb, ind_x_nb]):
-                    ind = index_of_pts[indptr[ind_y_nb, ind_x_nb, 0] + k]
+                    ind = index_of_pts[indptr[ind_y_nb, ind_x_nb] + k]
                     dist_sq = (centre[0] - points[ind, 0]) ** 2 \
                             + (centre[1] - points[ind, 1]) ** 2
                     points_cons.append((ind, dist_sq))
@@ -276,16 +277,13 @@ def nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, num_nn,
 
 index_nn, dist_nn = nearest_neighbours_reg(
                 points, index_of_pts, indptr, num_ppgc, 6,
-                x_axis, y_axis, grid_spac, 45, 56)
-# %timeit nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, 6, x_axis, y_axis, grid_spac, 45, 56)
-# %timeit nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, 1, x_axis, y_axis, grid_spac, 45, 56)
-# nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, 25, x_axis, y_axis, grid_spac, 45, 56)
+                x_axis, y_axis, grid_spac, 6, 4)
 
 ###############################################################################
-# IDW interpolation from 'n' nearest neighbours
+# IDW interpolation from nearest neighbours
 ###############################################################################
 
-def idw_reg_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
+def idw_esrg_nearest(points, data_in, x_axis, y_axis, grid_spac, num_nn):
 
     index_of_pts, indptr, num_ppgc \
         = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
@@ -349,11 +347,19 @@ def idw_reg_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn):
 
     return data_ip
 
+# Python/Numba implementation
 num_nn = 6
 data_in = z_reg_ip
-data_ip_nn = idw_reg_neighbours_n(points, data_in, x_axis, y_axis, grid_spac,
-                                  num_nn)
-# %timeit -n 1 -r 1 idw_reg_neighbours_n(points, data_in, x_axis, y_axis, grid_spac, num_nn)
+data_ip_nn_py = idw_esrg_nearest(points, data_in, x_axis, y_axis,
+                                     grid_spac, num_nn)
+
+# Fortran implementation
+data_ip_nn = ip_fortran.idw_esrg_nearest(np.asfortranarray(points),
+                data_in, x_axis, y_axis, grid_spac, num_nn)
+dev_abs_max = np.abs(data_ip_nn - data_ip_nn_py).max()
+print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
+dev_abs_mean = np.abs(data_ip_nn - data_ip_nn_py).mean()
+print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
 
 # Compare initial with re-interpolated data
 fontsize = 13.0
@@ -387,8 +393,8 @@ plt.show()
 # triangulation
 ###############################################################################
 
-def idw_reg_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
-                           indices_con, indptr_con):
+def idw_esrg_connected(points, data_in, x_axis, y_axis, grid_spac,
+                       indices_con, indptr_con):
 
     index_of_pts, indptr, num_ppgc \
         = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
@@ -463,10 +469,20 @@ def idw_reg_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
 
     return data_ip
 
+# Python/Numba implementation
 data_in = z_reg_ip
-data_ip_nc = idw_reg_neighbours_con(points, data_in, x_axis, y_axis, grid_spac,
-                                    indices_con, indptr_con)
-# %timeit -n 1 -r 1 idw_reg_neighbours_con(points, data_in, x_axis, y_axis, grid_spac, indices_con, indptr_con)
+data_ip_nc_py = idw_esrg_connected(points, data_in, x_axis, y_axis, grid_spac,
+                                   indices_con, indptr_con)
+
+# Fortran implementation
+data_ip_nc = ip_fortran.idw_esrg_connected(
+                np.asfortranarray(points),
+                data_in, x_axis, y_axis, grid_spac,
+                (indices_con + 1), (indptr_con + 1))
+dev_abs_max = np.abs(data_ip_nc - data_ip_nc_py).max()
+print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
+dev_abs_mean = np.abs(data_ip_nc - data_ip_nc_py).mean()
+print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
 
 # Compare initial with re-interpolated data
 fontsize = 13.0
