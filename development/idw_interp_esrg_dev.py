@@ -29,13 +29,13 @@ from interpolation import interpolation as ip_fortran # type: ignore
 # y_size = 8
 # num_points = 50
 # ----- small grid/mesh -----
-# x_size = 110
-# y_size = 91
-# num_points = 5_000
+x_size = 110
+y_size = 91
+num_points = 5_000
 # ----- large grid/mesh -----
-x_size = 770
-y_size = 637
-num_points = 250_000
+# x_size = 770
+# y_size = 637
+# num_points = 250_000
 # ----------------------
 
 # Regular grid
