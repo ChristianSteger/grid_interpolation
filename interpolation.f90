@@ -154,18 +154,23 @@ MODULE interpolation
         CALL nearest_neighbours(tree%root, point_target, 0, neighbours, &
           num_neighbours, neighbours_index)
 
-				! Nearest neighbour interpolation
-			  !data_ip(ind_y, ind_x) = data_in(neighbours_index(1))
-
 			  ! Inverse distance weighted interpolation
-        numerator = 0.0
-        denominator = 0.0
-        DO i = 1, num_neighbours
-          dist = sqrt(neighbours(3, i))
-          numerator = numerator + (data_in(neighbours_index(i)) / dist)
-          denominator = denominator + (1.0 / dist)
-        END DO
-        data_ip(ind_y, ind_x) = numerator / denominator
+        IF (sqrt(neighbours(3, 1)) <= (TINY(1.0) * 1e4)) THEN
+          ! nearest neighbour extremely close -> avoid division by zero
+          ! or (1.0 / dist) = Infinity
+          data_ip(ind_y, ind_x) = data_in(neighbours_index(1))
+          WRITE(6,*) 'Extremely close nearest neighbour (ind_x =', ind_x , &
+            'ind_y = ', ind_y, ', dist = ', sqrt(neighbours(3, 1)), ')'
+        ELSE
+          numerator = 0.0
+          denominator = 0.0
+          DO i = 1, num_neighbours
+            dist = sqrt(neighbours(3, i))
+            numerator = numerator + (data_in(neighbours_index(i)) / dist)
+            denominator = denominator + (1.0 / dist)
+          END DO
+          data_ip(ind_y, ind_x) = numerator / denominator
+        END IF
 
       END DO
     END DO
@@ -244,13 +249,21 @@ MODULE interpolation
           index_nn, dist_nn)
 
 			  ! Inverse distance weighted interpolation
-        numerator = 0.0
-        denominator = 0.0
-        DO i = 1, num_neighbours
-          numerator = numerator + (data_in(index_nn(i)) / dist_nn(i))
-          denominator = denominator + (1.0 / dist_nn(i))
-        END DO
-        data_ip(ind_y, ind_x) = numerator / denominator
+        IF (dist_nn(1) <= (TINY(1.0) * 1e4)) THEN
+          ! nearest neighbour extremely close -> avoid division by zero
+          ! or (1.0 / dist) = Infinity
+          data_ip(ind_y, ind_x) = data_in(index_nn(1))
+          WRITE(6,*) 'Extremely close nearest neighbour (ind_x =', ind_x , &
+            'ind_y = ', ind_y, ', dist = ', dist_nn(1), ')'
+        ELSE
+          numerator = 0.0
+          denominator = 0.0
+          DO i = 1, num_neighbours
+            numerator = numerator + (data_in(index_nn(i)) / dist_nn(i))
+            denominator = denominator + (1.0 / dist_nn(i))
+          END DO
+          data_ip(ind_y, ind_x) = numerator / denominator
+        END IF
 
       END DO
     END DO
@@ -338,19 +351,27 @@ MODULE interpolation
           index_nn, dist_nn)
 
 			  ! Inverse distance weighted interpolation
-        numerator = 0.0
-        denominator = 0.0
-        ! Nearest neighbour:
-        numerator = numerator + (data_in(index_nn(1)) / dist_nn(1))
-        denominator = denominator + (1.0 / dist_nn(1))
-        ! Points connected via triangulation:
-        DO i = indptr_con(index_nn(1)), (indptr_con(index_nn(1) + 1) - 1)
-          dist = SQRT((centre(1) - points(indices_con(i), 1)) ** 2 &
-                    + (centre(2) - points(indices_con(i), 2)) ** 2)
-          numerator = numerator + (data_in(indices_con(i)) / dist)
-          denominator = denominator + (1.0 / dist)
-        END DO
-        data_ip(ind_y, ind_x) = numerator / denominator
+        IF (dist_nn(1) <= (TINY(1.0) * 1e4)) THEN
+          ! nearest neighbour extremely close -> avoid division by zero
+          ! or (1.0 / dist) = Infinity
+          data_ip(ind_y, ind_x) = data_in(index_nn(1))
+          WRITE(6,*) 'Extremely close nearest neighbour (ind_x =', ind_x , &
+            'ind_y = ', ind_y, ', dist = ', dist_nn(1), ')'
+        ELSE
+          numerator = 0.0
+          denominator = 0.0
+          ! Nearest neighbour:
+          numerator = numerator + (data_in(index_nn(1)) / dist_nn(1))
+          denominator = denominator + (1.0 / dist_nn(1))
+          ! Points connected via triangulation:
+          DO i = indptr_con(index_nn(1)), (indptr_con(index_nn(1) + 1) - 1)
+            dist = SQRT((centre(1) - points(indices_con(i), 1)) ** 2 &
+                      + (centre(2) - points(indices_con(i), 2)) ** 2)
+            numerator = numerator + (data_in(indices_con(i)) / dist)
+            denominator = denominator + (1.0 / dist)
+          END DO
+          data_ip(ind_y, ind_x) = numerator / denominator
+        END IF
 
       END DO
     END DO
