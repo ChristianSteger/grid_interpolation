@@ -2,7 +2,7 @@
 !              to cell centres of equally spaced (dx = dy) regular grid
 !              via inverse distance weighted interpolation
 !
-!	Author: Christian R. Steger, October 2024
+! Author: Christian R. Steger, October 2024
 
 MODULE idw_interp_esrg
 
