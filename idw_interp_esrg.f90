@@ -1,28 +1,28 @@
 ! Description: Auxiliary functions to remap data from unstructured grid to
-!							 to cell centres of equally spaced (dx = dy) regular grid
-!							 via inverse distance weighted interpolation
+!              to cell centres of equally spaced (dx = dy) regular grid
+!              via inverse distance weighted interpolation
 !
 !	Author: Christian R. Steger, October 2024
 
 MODULE idw_interp_esrg
 
-	IMPLICIT NONE
-	PRIVATE
-	PUBLIC :: assign_points_to_cells, nearest_neighbours_esrg
+  IMPLICIT NONE
+  PRIVATE
+  PUBLIC :: assign_points_to_cells, nearest_neighbours_esrg
 
-	TYPE :: point_attr
-		INTEGER :: index
-		REAL :: dist_sq
-	END TYPE point_attr
+  TYPE :: point_attr
+    INTEGER :: index
+    REAL :: dist_sq
+  END TYPE point_attr
 
-	CONTAINS
+  CONTAINS
 
-	! ---------------------------------------------------------------------------
-	! Assign points to equally spaced regular grid (esrg)
-	! ---------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! Assign points to equally spaced regular grid (esrg)
+  ! ---------------------------------------------------------------------------
 
   SUBROUTINE assign_points_to_cells(points, x_axis, y_axis, grid_spac, &
-  	index_of_pts, indptr, num_ppgc)
+    index_of_pts, indptr, num_ppgc)
 
     REAL, DIMENSION(:, :), INTENT(IN) :: points ! (# of pts, 2)
     REAL, DIMENSION(:), INTENT(IN) :: x_axis, y_axis
@@ -36,25 +36,25 @@ MODULE idw_interp_esrg
     INTEGER :: len_x, len_y
 
     ! Shape of regular grid
-		len_x = SIZE(x_axis)
-		len_y = SIZE(y_axis)
+    len_x = SIZE(x_axis)
+    len_y = SIZE(y_axis)
 
     ! Compute number of points in each cell
     num_ppgc = 0 ! ppgc: points per grid cell
     DO i = 1, SIZE(points, 1)
       ind_x = INT((points(i, 1) - x_axis(1) + grid_spac / 2.0) / grid_spac) + 1
       IF (ind_x < 1) THEN
-      	ind_x = 1
+        ind_x = 1
       END IF
       IF (ind_x > len_x) THEN
-      	ind_x = len_x
-			END IF
+        ind_x = len_x
+      END IF
       ind_y = INT((points(i, 2) - y_axis(1) + grid_spac / 2.0) / grid_spac) + 1
       IF (ind_y < 1) THEN
-      	ind_y = 1
+        ind_y = 1
       END IF
       IF (ind_y > len_y) THEN
-      	ind_y = len_y
+        ind_y = len_y
       END IF
       num_ppgc(ind_y, ind_x) = num_ppgc(ind_y, ind_x) + 1
     END DO
@@ -73,17 +73,17 @@ MODULE idw_interp_esrg
     DO i = 1, SIZE(points, 1)
       ind_x = INT((points(i, 1) - x_axis(1) + grid_spac / 2.0) / grid_spac) + 1
       IF (ind_x < 1) THEN
-      	ind_x = 1
+        ind_x = 1
       END IF
       IF (ind_x > len_x) THEN
-      	ind_x = len_x
-			END IF
+        ind_x = len_x
+      END IF
       ind_y = INT((points(i, 2) - y_axis(1) + grid_spac / 2.0) / grid_spac) + 1
       IF (ind_y < 1) THEN
-      	ind_y = 1
+        ind_y = 1
       END IF
       IF (ind_y > len_y) THEN
-      	ind_y = len_y
+        ind_y = len_y
       END IF
       index_of_pts(indptr(ind_y, ind_x) + num_ppgc(ind_y, ind_x)) = i
       num_ppgc(ind_y, ind_x) = num_ppgc(ind_y, ind_x) + 1
@@ -91,9 +91,9 @@ MODULE idw_interp_esrg
 
   END SUBROUTINE assign_points_to_cells
 
-	! ---------------------------------------------------------------------------
-	! Find nearest neighbours from grid cell centre and their distances
-	! ---------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! Find nearest neighbours from grid cell centre and their distances
+  ! ---------------------------------------------------------------------------
 
 	SUBROUTINE nearest_neighbours_esrg(points, &
 		index_of_pts, indptr, num_ppgc, num_nn, &
