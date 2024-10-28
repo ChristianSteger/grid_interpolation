@@ -30,10 +30,10 @@ from interpolation import interpolation as ip_fortran # type: ignore
 # ----- very small grid/mesh -----
 # num_points = 50
 # ----- small grid/mesh -----
-# num_points = 5_000
+num_points = 5_000
 # ----- large grid/mesh -----
-num_points = 100_000
-# ----- large grid/mesh -----
+# num_points = 100_000
+# ----- very large grid/mesh -----
 # num_points = 500_000
 # ----------------------
 
@@ -83,12 +83,14 @@ y_axis = np.linspace(points[:, 1].min() - y_add, points[:, 1].max() + y_add,
                      len_y + 1)
 print("Number of cells in eq. spaced regular grid: ",
       (x_axis.size * y_axis.size))
+# -----------------------------------------------------------------------------
 # print(np.abs(np.diff(x_axis) - grid_spac).max())
 # print(np.abs(np.diff(y_axis) - grid_spac).max())
 # print(points[:, 0].min() - x_axis[0])
 # print(x_axis[-1] - points[:, 0].max())
 # print(points[:, 1].min() - y_axis[0])
 # print(y_axis[-1] - points[:, 1].max())
+# -----------------------------------------------------------------------------
 x_grid = np.linspace(x_axis[0] - grid_spac / 2.0, x_axis[-1] + grid_spac / 2.0,
                      x_axis.size + 1)
 y_grid = np.linspace(y_axis[0] - grid_spac / 2.0, y_axis[-1] + grid_spac / 2.0,
@@ -191,8 +193,10 @@ dev_abs_mean = np.abs(data_pts_reip_ft - data_pts_reip_scipy).mean()
 print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
 
 # Compare re-interpolated with original data
+print((" Deviation between original and re-interpolated data ")
+      .center(79, "-"))
 data_dev = data_pts_reip_ft - data_pts
-print(f"Maximal absolute deviation: {np.abs(data_dev).max():.8f}")  # ------- to do: add info to below plot
+print(f"Maximal absolute deviation: {np.abs(data_dev).max():.8f}")
 print(f"Mean absolute deviation: {np.abs(data_dev).mean():.8f}")
 
 # Colormap (difference)
@@ -206,7 +210,7 @@ norm_diff = mpl.colors.BoundaryNorm( # type: ignore
 # Plot original and re-interpolated data and difference
 if num_points <= 100_000:
     fontsize = 12.5
-    plt.figure(figsize=(19.0, 7.0))
+    plt.figure(figsize=(16.0, 6.0))
     gs = gridspec.GridSpec(2, 3, left=0.1, bottom=0.1, right=0.9, top=0.9,
                         wspace=0.08, hspace=0.1,
                         height_ratios=[1.0, 0.05])

@@ -117,9 +117,9 @@ MODULE idw_interp_esrg
 		INTEGER :: ind_x_nb, ind_y_nb
 		INTEGER :: ind, ind_is, level, num_nn_found
 		REAL, DIMENSION(:) :: centre(2)
-		TYPE(point_attr), DIMENSION(100) :: points_cons
+		TYPE(point_attr), DIMENSION(1000) :: points_cons
 		INTEGER :: num_pts_cons
-		TYPE(point_attr), DIMENSION(100) :: points_cons_next
+		TYPE(point_attr), DIMENSION(1000) :: points_cons_next
 		INTEGER :: num_pts_cons_next
 
 		! Shape of regular grid
