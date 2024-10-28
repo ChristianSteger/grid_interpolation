@@ -148,13 +148,13 @@ MODULE interpolation
     DO ind_y = 1, len_y
       DO ind_x = 1, len_x
 
-				! Find nearest n neighbours
+        ! Find nearest n neighbours
         point_target = [x_axis(ind_x), y_axis(ind_y)]
         neighbours = 1.0e6 ! Initialise neighbours array to large values
         CALL nearest_neighbours(tree%root, point_target, 0, neighbours, &
           num_neighbours, neighbours_index)
 
-			  ! Inverse distance weighted interpolation
+        ! Inverse distance weighted interpolation
         IF (sqrt(neighbours(3, 1)) <= (TINY(1.0) * 1e4)) THEN
           ! nearest neighbour extremely close -> avoid division by zero
           ! or (1.0 / dist) = Infinity
@@ -242,13 +242,13 @@ MODULE interpolation
     DO ind_y = 1, len_y
       DO ind_x = 1, len_x
 
-				! Find nearest n neighbours
+        ! Find nearest n neighbours
         CALL nearest_neighbours_esrg(points, &
           index_of_pts, indptr, num_ppgc, num_neighbours, &
           x_axis, y_axis, grid_spac, ind_x, ind_y, &
           index_nn, dist_nn)
 
-			  ! Inverse distance weighted interpolation
+        ! Inverse distance weighted interpolation
         IF (dist_nn(1) <= (TINY(1.0) * 1e4)) THEN
           ! nearest neighbour extremely close -> avoid division by zero
           ! or (1.0 / dist) = Infinity
@@ -344,13 +344,13 @@ MODULE interpolation
         centre(1) = x_axis(ind_x)
         centre(2) = y_axis(ind_y)
 
-				! Find nearest n neighbours
+        ! Find nearest n neighbours
         CALL nearest_neighbours_esrg(points, &
           index_of_pts, indptr, num_ppgc, 1, &
           x_axis, y_axis, grid_spac, ind_x, ind_y, &
           index_nn, dist_nn)
 
-			  ! Inverse distance weighted interpolation
+        ! Inverse distance weighted interpolation
         IF (dist_nn(1) <= (TINY(1.0) * 1e4)) THEN
           ! nearest neighbour extremely close -> avoid division by zero
           ! or (1.0 / dist) = Infinity
