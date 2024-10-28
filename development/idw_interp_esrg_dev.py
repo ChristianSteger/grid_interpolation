@@ -12,7 +12,6 @@ import matplotlib.gridspec as gridspec
 from scipy.spatial import Delaunay
 from scipy import interpolate
 from scipy.spatial import KDTree
-from numba import njit
 
 mpl.style.use("classic") # type: ignore
 
@@ -33,9 +32,9 @@ x_size = 110
 y_size = 91
 num_points = 5_000
 # ----- large grid/mesh -----
-# x_size = 770
-# y_size = 637
-# num_points = 250_000
+# x_size = 490
+# y_size = 387
+# num_points = 100_000
 # ----------------------
 
 # Regular grid
@@ -118,7 +117,6 @@ plt.show()
 ###############################################################################
 
  # Assign points to regular grid cells
-@njit
 def assign_points_to_cells(points, x_axis, y_axis, grid_spac):
 
     # Compute number of points in each cell
@@ -172,7 +170,6 @@ index_of_pts, indptr, num_ppgc \
     = assign_points_to_cells(points, x_axis, y_axis,  grid_spac)
 
 # Find 'n' nearest neighbours from grid cell centre and their distances
-@njit
 def nearest_neighbours_reg(points, index_of_pts, indptr, num_ppgc, num_nn,
                            x_axis, y_axis, grid_spac, ind_x, ind_y):
 
@@ -515,8 +512,18 @@ plt.show()
 # Check difference between interpolation methods
 ###############################################################################
 
+# Colormap (difference)
+data_dev = data_ip_nc - data_ip_nn
+cmap_diff = plt.get_cmap("RdBu")
+levels_diff = MaxNLocator(nbins=20, steps=[1, 2, 5, 10], symmetric=True) \
+    .tick_values(np.percentile(data_dev, 0.1),
+                 np.percentile(data_dev, 0.9))
+norm_diff = mpl.colors.BoundaryNorm( # type: ignore
+    levels_diff, ncolors=cmap_diff.N, extend="both")
+
+# Plot
 plt.figure(figsize=(8.8, 7))
-plt.pcolormesh(x_axis, y_axis, data_ip_nc - data_ip_nn, cmap="RdBu")
+plt.pcolormesh(x_axis, y_axis, data_dev, cmap=cmap_diff, norm=norm_diff)
 plt.axis((x_grid[0], x_grid[-1], y_grid[0], y_grid[-1]))
 plt.colorbar()
 plt.show()
