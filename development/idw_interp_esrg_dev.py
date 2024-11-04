@@ -1,5 +1,6 @@
-# Description: Fast inverse distance weighted (IDW) interpolation methods to
-#              to regular grid with equal spacing in both dimensions.
+# Description: Fast inverse distance weighted (IDW) interpolation methods from
+#              unstructured to regular grid with equal spacing in both 
+#              dimensions (-> development of Python implementation)
 #
 # Author: Christian Steger, October 2024
 
@@ -101,9 +102,9 @@ plt.pcolormesh(x_axis, y_axis, z_reg, cmap=cmap, norm=norm)
 plt.colorbar()
 plt.vlines(x=x_grid, ymin=y_grid[0], ymax=y_grid[-1], colors="black")
 plt.hlines(y=y_grid, xmin=x_grid[0], xmax=x_grid[-1], colors="black")
-# -----------------------------------------------------------------------------
 plt.triplot(points[:, 0], points[:, 1], triangles.simplices, color="black",
                 linewidth=0.5, zorder=2)
+# -----------------------------------------------------------------------------
 plt.scatter(points[:, 0], points[:, 1], color="black", s=25, zorder=2)
 # -----------------------------------------------------------------------------
 # plt.scatter(points[:, 0], points[:, 1], c=cmap(norm(z_reg_ip)), s=50,
