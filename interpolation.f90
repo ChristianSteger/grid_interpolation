@@ -7,6 +7,7 @@ MODULE interpolation
 
   USE kd_tree
   USE idw_interp_esrg
+  USE OMP_LIB
   IMPLICIT NONE
 
   CONTAINS
@@ -41,7 +42,7 @@ MODULE interpolation
     INTEGER :: ind_x, ind_y
     REAL :: value_ofb = -9999.0  ! Out-of-bounds value
     REAL :: w_11, w_12, w_21, w_22
-    REAL :: time_1, time_2
+    REAL(8) :: time_1, time_2
 
     ! Compute inverse of x- and y-grid spacing
     delta = 0.0
@@ -56,7 +57,8 @@ MODULE interpolation
     dy_inv = 1.0 / (delta / REAL(len_y - 1))
 
     ! Perform interpolation
-    CALL cpu_time(time_1)
+    time_1 = OMP_GET_WTIME()
+    !$OMP PARALLEL DO PRIVATE(ind_x, ind_y, w_11, w_12, w_21, w_22)
     DO ind = 1, num_points
 
       ! Check if point is within regcular grid
@@ -90,7 +92,8 @@ MODULE interpolation
                      (dx_inv * dy_inv)
 
     END DO
-    CALL cpu_time(time_2)
+    !$OMP END PARALLEL DO
+    time_2 = OMP_GET_WTIME()
     WRITE(6,*) 'Interpolation: ', time_2 - time_1, ' s'
 
   END SUBROUTINE bilinear
@@ -124,7 +127,7 @@ MODULE interpolation
 
     INTEGER, DIMENSION(:), allocatable :: index
     TYPE(kdtree_type) :: tree
-    REAL :: time_1, time_2
+    REAL(8) :: time_1, time_2
     INTEGER :: i
     INTEGER :: ind_x, ind_y
     REAL, DIMENSION(2) :: point_target
@@ -136,15 +139,17 @@ MODULE interpolation
     index(:) = (/(i, i=1,num_points, 1)/)
 
     ! Build the k-d tree
-    CALL cpu_time(time_1)
+    time_1 = OMP_GET_WTIME()
     CALL build_kd_tree(tree, points, size(points, 2), 0, index)
-    CALL cpu_time(time_2)
+    time_2 = OMP_GET_WTIME()
     WRITE(6,*) 'Build tree: ', time_2 - time_1, ' s'
 
     ! Perform interpolation
-    CALL cpu_time(time_1)
+    time_1 = OMP_GET_WTIME()
     ALLOCATE(neighbours(3, num_neighbours))
     ALLOCATE(neighbours_index(num_neighbours))
+    !$OMP PARALLEL DO PRIVATE(ind_x, point_target, neighbours, &
+    !$OMP neighbours_index, numerator, denominator, i, dist)
     DO ind_y = 1, len_y
       DO ind_x = 1, len_x
 
@@ -174,7 +179,8 @@ MODULE interpolation
 
       END DO
     END DO
-    CALL cpu_time(time_2)
+    !$OMP END PARALLEL DO
+    time_2 = OMP_GET_WTIME()
     WRITE(6,*) 'Interpolation: ', time_2 - time_1, ' s'
 
     ! Free the memory associated with the k-d tree
@@ -216,7 +222,7 @@ MODULE interpolation
     !f2py intent(out) data_ip
 
     INTEGER :: ind_x, ind_y
-    REAL :: time_1, time_2
+    REAL(8) :: time_1, time_2
     integer :: i
     REAL :: numerator, denominator
     INTEGER, DIMENSION(:), allocatable :: index_of_pts
@@ -231,14 +237,15 @@ MODULE interpolation
     ALLOCATE(index_nn(num_neighbours))
     ALLOCATE(dist_nn(num_neighbours))
 
-    CALL cpu_time(time_1)
+    time_1 = OMP_GET_WTIME()
     CALL assign_points_to_cells(points, x_axis, y_axis, grid_spac, &
       index_of_pts, indptr, num_ppgc)
-    CALL cpu_time(time_2)
+    time_2 = OMP_GET_WTIME()
     WRITE(6,*) 'Assign points to cells: ', time_2 - time_1, ' s'
 
-    ! Perform interpolation (TODO: could be performed in parallel)
-    CALL cpu_time(time_1)
+    ! Perform interpolation
+    time_1 = OMP_GET_WTIME()
+    !$OMP PARALLEL DO PRIVATE(ind_x, index_nn, dist_nn, numerator, denominator)
     DO ind_y = 1, len_y
       DO ind_x = 1, len_x
 
@@ -267,7 +274,8 @@ MODULE interpolation
 
       END DO
     END DO
-    CALL cpu_time(time_2)
+    !$OMP END PARALLEL DO
+    time_2 = OMP_GET_WTIME()
     WRITE(6,*) 'Interpolation: ', time_2 - time_1, ' s'
 
     DEALLOCATE(index_of_pts)
@@ -313,7 +321,7 @@ MODULE interpolation
     !f2py intent(out) data_ip
 
     INTEGER :: ind_x, ind_y
-    REAL :: time_1, time_2
+    REAL(8) :: time_1, time_2
     integer :: i
     REAL :: numerator, denominator, dist
     INTEGER, DIMENSION(:), allocatable :: index_of_pts
@@ -329,14 +337,16 @@ MODULE interpolation
     ALLOCATE(index_nn(1))
     ALLOCATE(dist_nn(1))
 
-    CALL cpu_time(time_1)
+    time_1 = OMP_GET_WTIME()
     CALL assign_points_to_cells(points, x_axis, y_axis, grid_spac, &
       index_of_pts, indptr, num_ppgc)
-    CALL cpu_time(time_2)
+    time_2 = OMP_GET_WTIME()
     WRITE(6,*) 'Assign points to cells: ', time_2 - time_1, ' s'
 
-    ! Perform interpolation (TODO: could be performed in parallel)
-    CALL cpu_time(time_1)
+    ! Perform interpolation
+    time_1 = OMP_GET_WTIME()
+    !$OMP PARALLEL DO PRIVATE(ind_x, centre, index_nn, dist_nn, numerator, &
+    !$OMP denominator, i, dist)
     DO ind_y = 1, len_y
       DO ind_x = 1, len_x
 
@@ -375,7 +385,8 @@ MODULE interpolation
 
       END DO
     END DO
-    CALL cpu_time(time_2)
+    !$OMP END PARALLEL DO
+    time_2 = OMP_GET_WTIME()
     WRITE(6,*) 'Interpolation: ', time_2 - time_1, ' s'
 
     DEALLOCATE(index_of_pts)
