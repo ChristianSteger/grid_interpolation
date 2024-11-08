@@ -1,8 +1,7 @@
-! Description: Auxiliary functions to remap data from unstructured grid to
-!              to cell centres of equally spaced (dx = dy) regular grid
-!              via inverse distance weighted interpolation
+! Description: Algorithm to find nearest neighbours in two-dimensional
+!              equally spaced (dx = dy) regular grid (esrg)
 !
-! Author: Christian R. Steger, October 2024
+! Author: Christian R. Steger, November 2024
 
 MODULE idw_interp_esrg
 

@@ -1,7 +1,7 @@
-! Description: K-d tree implementation to remap data from unstructured grid to
-!              arbitrary grid via inverse distance weighted interpolation
+! Description: K-d tree implementation to find nearest neighbours in
+!              two-dimensional space
 !
-! Author: Christian R. Steger, October 2024
+! Author: Christian R. Steger, November 2024
 
 MODULE kd_tree
 
