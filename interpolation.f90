@@ -6,7 +6,7 @@
 MODULE interpolation
 
   USE kd_tree
-  USE idw_interp_esrg
+  USE query_esrg
   USE OMP_LIB
   IMPLICIT NONE
 

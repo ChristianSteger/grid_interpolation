@@ -3,7 +3,7 @@
 !
 ! Author: Christian R. Steger, November 2024
 
-MODULE idw_interp_esrg
+MODULE query_esrg
 
   IMPLICIT NONE
   PRIVATE
@@ -248,4 +248,4 @@ MODULE idw_interp_esrg
 
   END SUBROUTINE nearest_neighbours_esrg
 
-END MODULE idw_interp_esrg
+END MODULE query_esrg

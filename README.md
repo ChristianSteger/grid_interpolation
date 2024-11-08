@@ -15,9 +15,9 @@ conda create -n grid_interpolation numpy scipy matplotlib ipython gfortran meson
 ## Compile Fortran code and build shared library for F2PY (tested on MacOS)
 ```bash
 gfortran -shared -O3 -o libkd_tree.so -fPIC kd_tree.f90
-gfortran -shared -O3 -o libidw_interp_esrg.so -fPIC idw_interp_esrg.f90
+gfortran -shared -O3 -o libquery_esrg.so -fPIC query_esrg.f90
 cwd=$(pwd)
-f2py -c --f90flags='-fopenmp' -lgomp --fcompiler=gfortran -L${cwd}/ -I${cwd}/ -lkd_tree -lidw_interp_esrg -m interpolation interpolation.f90
+f2py -c --f90flags='-fopenmp' -lgomp --fcompiler=gfortran -L${cwd}/ -I${cwd}/ -lkd_tree -lquery_esrg -m interpolation interpolation.f90
 ```
 
 ## Clean build
