@@ -234,9 +234,11 @@ while True:
     # Check intersection with triangle edges
     inters_found = False
     for i in range(3):
-        p_edge_1 = Point(*vertices[ind_cur, ind_loop[i], :])
-        p_edge_2 = Point(*vertices[ind_cur, ind_loop[i + 1], :])
-        if intersect(pt_start, pt_end, p_edge_1, p_edge_2):
+        ind_vt_1 = ind_loop[i]
+        ind_vt_2 = ind_loop[i + 1]
+        vertex_1 = Point(*vertices[ind_cur, ind_vt_1, :])
+        vertex_2 = Point(*vertices[ind_cur, ind_vt_2, :])
+        if intersect(pt_start, pt_end, vertex_1, vertex_2):
             inters_found = True
             break
     if inters_found == False:
@@ -245,32 +247,41 @@ while True:
     i -= 1
     if i < 0:
         i = 2
+    ind_prev = ind_cur
     ind_cur = neighbours[ind_cur][i]
+
+    # Handle points outside of convex hull
     if ind_cur == -1:
         print("Break: Point is outside of convex hull")
-
         # ---------------------------------------------------------------------
         # https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
         # https://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment
-
-        px = p_edge_2.x - p_edge_1.x
-        py = p_edge_2.y - p_edge_1.y
+        px = vertex_2.x - vertex_1.x
+        py = vertex_2.y - vertex_1.y
         norm = px * px + py * py
-        u =  (((pt_end.x - p_edge_1.x) * px + (pt_end.y - p_edge_1.y) * py) 
+        u =  (((pt_end.x - vertex_1.x) * px + (pt_end.y - vertex_1.y) * py) 
             / norm)
         if (u < 0) or (u > 1):
+            # -----------------------------------------------------------------
+            # Point is not perpendicular to intersected triangle edge
+            # -----------------------------------------------------------------
+            dist_sq_1 = (pt_end.x - vertex_1.x) ** 2 \
+                + (pt_end.y - vertex_1.y) ** 2
+            dist_sq_2 = (pt_end.x - vertex_2.x) ** 2 \
+                + (pt_end.y - vertex_2.y) ** 2
+            
+
+
             print("Warning: Special case: not yet implemented!")
             break
-        x_b = p_edge_1.x + u * px
-        y_b = p_edge_1.y + u * py
+            # -----------------------------------------------------------------
+        x_b = vertex_1.x + u * px
+        y_b = vertex_1.y + u * py
         plt.plot([pt_end.x, x_b], [pt_end.y, y_b], color="black",
                  linestyle=":", lw=0.8, zorder=-1)
         plt.scatter(x_b, y_b, color="black", marker="*", s=50)
-
         # ---------------------------------------------------------------------
-
         break
-
 # -----------------------------------------------------------------------------
 plt.title(f"Number of iterations" + f": {count}", loc="left")
 plt.axis((x_grid[0] - 0.5, x_grid[-1] + 0.5,
