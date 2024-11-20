@@ -39,7 +39,7 @@ class LineSegment:
 # how-can-i-check-if-two-segments-intersect
 
 def ccw(A, B, C):
-    """Check if points A, B, C are counterclockwise oriented."""
+    """Check if points A, B and C are counterclockwise oriented"""
     return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x)
 
 def linesegments_intersect(line_1, line_2):

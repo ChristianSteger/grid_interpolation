@@ -22,7 +22,7 @@ MODULE triangle_walk
   ! ---------------------------------------------------------------------------
 
   SUBROUTINE find_triangle(points, simplices, neighbours, neighbour_none, &
-    ind_tri_start, point_target, ind_tri_out, point_out)
+    ind_tri_start, point_target, ind_tri_out, point_out, iters)
 
     REAL, DIMENSION(:, :), INTENT(IN) :: points ! (# of pts, 2)
     INTEGER, DIMENSION(:, :), INTENT(IN) :: simplices ! (# of triangles, 3)
@@ -32,23 +32,19 @@ MODULE triangle_walk
     TYPE(point), INTENT(IN) :: point_target
     INTEGER, INTENT(OUT) :: ind_tri_out
     TYPE(point), INTENT(OUT) :: point_out
+    INTEGER, INTENT(OUT) :: iters
     
-    INTEGER, DIMENSION(4) :: ind_loop = (/ 1, 2, 3, 1 /)
+    INTEGER, DIMENSION(4) :: ind_loop
     LOGICAL, DIMENSION(:), ALLOCATABLE :: tri_visited
-    INTEGER :: ind_tri
+    INTEGER :: ind_tri, ind_1, ind_2, ind_tri_pre, ind_rot, ind_opp, ind_rem
     LOGICAL :: inters_found
-    INTEGER :: num_tri
-    INTEGER :: iters
-    TYPE(point) :: centroid
-    TYPE(point), DIMENSION(2) :: line_walk
-    INTEGER :: ind_1, ind_2
-    TYPE(point), DIMENSION(2) :: line_edge
-    INTEGER :: i
-    INTEGER :: ind_tri_pre
+    INTEGER :: i, num_tri
+    TYPE(point) :: centroid, point_base
+    TYPE(point), DIMENSION(2) :: line_walk, line_edge
+    REAL :: u, dist_sq_1, dist_sq_2
     
-    ! Number of triangles
-    num_tri = SIZE(simplices,1)
-      
+    ind_loop = (/ 1, 2, 3, 1 /)
+    num_tri = SIZE(simplices,1) ! # of triangles  
     ALLOCATE(tri_visited(num_tri))
     tri_visited(:) = .FALSE.
     ind_tri = ind_tri_start
@@ -77,8 +73,8 @@ MODULE triangle_walk
         ind_1 = ind_loop(i)
         ind_2 = ind_loop(i + 1)
         line_edge(1)%x = points(simplices(ind_tri, ind_1), 1)
-        line_edge(1)%x = points(simplices(ind_tri, ind_1), 2)
-        line_edge(2)%y = points(simplices(ind_tri, ind_2), 1)
+        line_edge(1)%y = points(simplices(ind_tri, ind_1), 2)
+        line_edge(2)%x = points(simplices(ind_tri, ind_2), 1)
         line_edge(2)%y = points(simplices(ind_tri, ind_2), 2)
         IF (linesegments_intersect(line_walk, line_edge)) THEN
           inters_found = .TRUE.
@@ -97,11 +93,78 @@ MODULE triangle_walk
       END IF
       ind_tri_pre = ind_tri
       ind_tri = neighbours(ind_tri, i)
-        
+
       ! Handle points outside of convex hull
       IF (ind_tri == neighbour_none) THEN
         WRITE(6,*) 'Point is outside of convex hull'
         ind_tri = ind_tri_pre  ! set triangle index to last valid
+        CALL base_point(line_edge, point_target, u, point_base)
+        IF ((u >= 0) .AND. (u <= 1)) THEN
+          ! -------------------------------------------------------------------
+          ! Point is perpendicular to 'direct outer' edge of triangle
+          ! -------------------------------------------------------------------
+          WRITE(6,*) 'Exit: Point is perpendicular to direct outer edge of triangle'
+          ind_tri_out = ind_tri
+          point_out = point_base
+          EXIT
+        ELSE
+          ! -------------------------------------------------------------------
+          ! Point is not perpendicular to 'direct outer' edge of triangle
+          ! -------------------------------------------------------------------
+          WRITE(6,*) 'Point is not perpendicular to direct outer edge of triangle'
+
+          ! Define 'rotation' and 'opposite' vertices
+          dist_sq_1 = distance_sq(point_target, line_edge(1))
+          dist_sq_2 = distance_sq(point_target, line_edge(2))
+          IF (dist_sq_1 < dist_sq_2) THEN
+            ind_rot = ind_1
+            ind_opp = ind_2
+          ELSE
+            ind_rot = ind_2
+            ind_opp = ind_1
+          END IF
+          
+          ! Move along line segments of convex hull
+          DO WHILE (.TRUE.)
+
+            ! Move to triangle that represents adjacent outer edge
+            CALL get_adjacent_edge(simplices, neighbours, neighbour_none, &
+              ind_tri, ind_rot, ind_opp, ind_rem)
+            
+            line_edge(1)%x = points(simplices(ind_tri, ind_rot), 1)
+            line_edge(1)%y = points(simplices(ind_tri, ind_rot), 2)
+            line_edge(2)%x = points(simplices(ind_tri, ind_rem), 1)
+            line_edge(2)%y = points(simplices(ind_tri, ind_rem), 2)
+            
+            ! Check if point is perpendicular to edge
+            CALL base_point(line_edge, point_target, u, point_base)
+						IF ((u >= 0) .AND. (u <= 1)) THEN
+              WRITE(6,*) 'Exit: Point is perpendicular to edge'
+              ind_tri_out = ind_tri
+              point_out = point_base
+              EXIT
+						END IF
+						
+            ! Check if point should be assigned to 'rotation vertices'
+            dist_sq_1 = distance_sq(point_target, line_edge(1))
+            dist_sq_2 = distance_sq(point_target, line_edge(2))
+						IF (dist_sq_1 < dist_sq_2) THEN
+              WRITE(6,*) 'Exit: Point is not perpendicular to edge -> use nearest vertices'
+              ind_tri_out = ind_tri
+              point_out%x = points(simplices(ind_tri, ind_rot), 1)
+              point_out%y = points(simplices(ind_tri, ind_rot), 2)
+              EXIT
+						END IF
+						
+            ! Move to next line of convex hull during next iteration
+            ind_opp = ind_rot
+            ind_rot = ind_rem
+          
+          END DO
+          
+          EXIT ! point assigned in inner 'while loop' -> break out of outer
+
+        END IF
         
       END IF
 
@@ -115,7 +178,7 @@ MODULE triangle_walk
   ! Two-dimensional line/point algorithms and auxiliary functions
   ! ---------------------------------------------------------------------------
 
-  ! Check if points A, B, C are counterclockwise oriented.
+  ! Check if points a, b and c are counterclockwise oriented
   FUNCTION ccw(a, b, c) RESULT(res)
     TYPE(point), INTENT(IN) :: a, b, c
     LOGICAL :: res
@@ -124,7 +187,7 @@ MODULE triangle_walk
 
   END FUNCTION
 
-  ! Check if line segments intersect (~returns False if line segments only
+  ! Check if line segments intersect (~returns .FALSE. if line segments only
   ! touch)
   FUNCTION linesegments_intersect(line_1, line_2) RESULT(res)
     TYPE(point), DIMENSION(2), INTENT(IN) :: line_1, line_2
@@ -182,7 +245,7 @@ MODULE triangle_walk
     dist_sq = (A%x - B%x) ** 2 + (A%y - B%y) ** 2
 
   END FUNCTION
-  
+
   ! Move to ajdacent edge in convex hull
   SUBROUTINE get_adjacent_edge(simplices, neighbours, neighbour_none, &
     ind_tri, ind_rot, ind_opp, ind_rem)
