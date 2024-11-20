@@ -244,10 +244,10 @@ def get_adjacent_edge(simplices, neighbours, neighbour_none,
         ind_vtx_opp = simplices[ind_tri, ind_opp]
         ind_vtx_rem = get_rem(simplices[ind_tri, :],
                               ind_vtx_rot, ind_vtx_opp)
-        if neighbours[ind_tri][ind_opp] == neighbour_none:
+        if neighbours[ind_tri, ind_opp] == neighbour_none:
             break
         else:
-            ind_tri = neighbours[ind_tri][ind_opp]
+            ind_tri = neighbours[ind_tri, ind_opp]
             ind_opp = np.where(ind_vtx_rem == simplices[ind_tri, :])[0][0]
     ind_rot = np.where(ind_vtx_rot == simplices[ind_tri, :])[0][0]
     ind_rem = np.where(ind_vtx_rem == simplices[ind_tri, :])[0][0]
@@ -349,7 +349,7 @@ def triangle_walk(points, simplices, neighbours, neighbour_none,
         if i < 0:
             i = 2
         ind_tri_pre = ind_tri
-        ind_tri = neighbours[ind_tri][i]
+        ind_tri = neighbours[ind_tri, i]
 
         # Handle points outside of convex hull
         if ind_tri == neighbour_none:

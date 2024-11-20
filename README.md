@@ -16,6 +16,7 @@ conda create -n grid_interpolation numpy scipy matplotlib ipython gfortran meson
 ```bash
 gfortran -shared -O3 -o libkd_tree.so -fPIC kd_tree.f90
 gfortran -shared -O3 -o libquery_esrg.so -fPIC query_esrg.f90
+gfortran -shared -o libtriangle_walk.so -fPIC triangle_walk.f90
 cwd=$(pwd)
 f2py -c --f90flags='-fopenmp' -lgomp --fcompiler=gfortran -L${cwd}/ -I${cwd}/ -lkd_tree -lquery_esrg -m interpolation interpolation.f90
 ```
