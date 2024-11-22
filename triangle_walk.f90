@@ -7,7 +7,7 @@ MODULE triangle_walk
 
   IMPLICIT NONE
   PRIVATE
-  PUBLIC :: find_triangle
+  PUBLIC :: point, find_triangle
 
   TYPE :: point
     REAL :: x
@@ -61,7 +61,7 @@ MODULE triangle_walk
         END IF
       END DO
       IF (point_outside .EQV. .FALSE.) THEN
-        WRITE(6,*) 'Exit: Triangle containing point found'
+        !WRITE(6,*) 'Exit: Triangle containing point found'
         point_out = point_target
         EXIT outer
       END IF
@@ -74,21 +74,21 @@ MODULE triangle_walk
 
       ! Handle points outside of convex hull
       IF (ind_tri == neighbour_none) THEN
-        WRITE(6,*) 'Point is outside of convex hull'
+        !WRITE(6,*) 'Point is outside of convex hull'
         ind_tri = ind_tri_pre  ! set triangle index to last valid
         CALL base_point(line_edge, point_target, u, point_base)
         IF ((u >= 0) .AND. (u <= 1)) THEN
           ! -------------------------------------------------------------------
           ! Point is perpendicular to 'direct outer' edge of triangle
           ! -------------------------------------------------------------------
-          WRITE(6,*) 'Exit: Point is perpendicular to direct outer edge of triangle'
+          !WRITE(6,*) 'Exit: Point is perpendicular to direct outer edge of triangle'
           point_out = point_base
           EXIT outer
         ELSE
           ! -------------------------------------------------------------------
           ! Point is not perpendicular to 'direct outer' edge of triangle
           ! -------------------------------------------------------------------
-          WRITE(6,*) 'Point is not perpendicular to direct outer edge of triangle'
+          !WRITE(6,*) 'Point is not perpendicular to direct outer edge of triangle'
 
           ! Define 'rotation' and 'opposite' vertices
           dist_sq_1 = distance_sq(point_target, line_edge(1))
@@ -116,7 +116,7 @@ MODULE triangle_walk
             ! Check if point is perpendicular to edge
             CALL base_point(line_edge, point_target, u, point_base)
             IF ((u >= 0) .AND. (u <= 1)) THEN
-              WRITE(6,*) 'Exit: Point is perpendicular to edge'
+              !WRITE(6,*) 'Exit: Point is perpendicular to edge'
               point_out = point_base
               EXIT outer
             END IF
@@ -125,7 +125,7 @@ MODULE triangle_walk
             dist_sq_1 = distance_sq(point_target, line_edge(1))
             dist_sq_2 = distance_sq(point_target, line_edge(2))
             IF (dist_sq_1 < dist_sq_2) THEN
-              WRITE(6,*) 'Exit: Point is not perpendicular to edge -> use nearest vertices'
+              !WRITE(6,*) 'Exit: Point is not perpendicular to edge -> use nearest vertices'
               point_out%x = points(simplices(ind_tri, ind_rot), 1)
               point_out%y = points(simplices(ind_tri, ind_rot), 2)
               EXIT outer
@@ -223,21 +223,21 @@ MODULE triangle_walk
     INTEGER, INTENT(INOUT) :: ind_tri, ind_rot, ind_opp
     INTEGER, INTENT(OUT) :: ind_rem
 
-    INTEGER :: ind_vtx_rot, ind_vtx_opp, ind_vtx_rem
+    INTEGER :: ind_vt_rot, ind_vt_opp, ind_vt_rem
 
-    ind_vtx_rot = simplices(ind_tri, ind_rot)  ! constant
+    ind_vt_rot = simplices(ind_tri, ind_rot)  ! constant
     DO
-      ind_vtx_opp = simplices(ind_tri, ind_opp)
-      ind_vtx_rem = get_rem(simplices(ind_tri, :), ind_vtx_rot, ind_vtx_opp)
+      ind_vt_opp = simplices(ind_tri, ind_opp)
+      ind_vt_rem = get_rem(simplices(ind_tri, :), ind_vt_rot, ind_vt_opp)
       IF (neighbours(ind_tri, ind_opp) == neighbour_none) THEN
         EXIT
       ELSE
         ind_tri = neighbours(ind_tri, ind_opp)
-        ind_opp = findloc(simplices(ind_tri, :), value=ind_vtx_rem, dim=1)
+        ind_opp = findloc(simplices(ind_tri, :), value=ind_vt_rem, dim=1)
       END IF
     END DO
-    ind_rot = findloc(simplices(ind_tri, :), value=ind_vtx_rot, dim=1)
-    ind_rem = findloc(simplices(ind_tri, :), value=ind_vtx_rem, dim=1)
+    ind_rot = findloc(simplices(ind_tri, :), value=ind_vt_rot, dim=1)
+    ind_rem = findloc(simplices(ind_tri, :), value=ind_vt_rem, dim=1)
 
   END SUBROUTINE get_adjacent_edge
 

@@ -1,9 +1,9 @@
 # Description
-Fortran code to interpolate from regular to unstructured grid (e.g., triangle mesh) and vice versa.
-The former interpolation is performed with bilinear interpolation, the latter with inverse distance weighting (IDW)
-and the application of a k-d tree to efficiently find the nearest neighbours.
-For an equally spaced regular grid (esrg) &ndash; i.e., a grid with an equal spacing in the x- and y-direction &ndash;
-an even faster algorithm for IDW interpolation is implemented.
+Fortran code to interpolate from regular to unstructured grid (triangle mesh) and vice versa.
+The former interpolation is performed with bilinear interpolation. The latter either with
+inverse distance weighting (IDW) for an unstructured grid or barycentric interpolation for
+a triangle mesh. The nearest neighbours for the IDW interpolation can be found with a k-d tree
+or a specific more efficient algorithm in case of an equally spaced regular grid (esrg) &ndash; i.e., a grid with an equal spacing in the x- and y-direction.
 
 # Usage
 

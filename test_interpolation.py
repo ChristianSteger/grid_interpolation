@@ -29,7 +29,7 @@ from interpolation import interpolation as ip_fortran # type: ignore
 # Grid/mesh size
 # ----- very small grid/mesh -----
 # num_points = 50
-# ----- small grid/mesh -----
+# ----- small grid/mesh ---
 num_points = 5_000
 # ----- large grid/mesh -----
 # num_points = 100_000
@@ -133,19 +133,21 @@ data_esrg_scipy = (((data_pts[indices] / dist)).sum(axis=1)
                 / (1.0 / dist).sum(axis=1)).reshape(y_axis.size, x_axis.size)
 
 # IWD, Fortran k-d tree
+points_ft_trans = np.asfortranarray(points.transpose())
 print((" IWD, Fortran k-d tree ").center(79, "-"))
 data_esrg_ft = ip_fortran.idw_kdtree(
-    np.asfortranarray(points.transpose()), data_pts, x_axis, y_axis, num_nn)
+    points_ft_trans, data_pts, x_axis, y_axis, num_nn)
 dev_abs_max = np.abs(data_esrg_ft - data_esrg_scipy).max()
 print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
 dev_abs_mean = np.abs(data_esrg_ft - data_esrg_scipy).mean()
 print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
 
 # IWD, Fortran esrg nearest neighbour + connected points
+points_ft = np.asfortranarray(points)
 print((" IWD, Fortran esrg nearest neighbour + connected points ")
       .center(79, "-"))
 data_esrg_ft = ip_fortran.idw_esrg_connected(
-    np.asfortranarray(points), data_pts, x_axis, y_axis, grid_spac,
+    points_ft, data_pts, x_axis, y_axis, grid_spac,
     (indices_con + 1), (indptr_con + 1))
 dev_abs_max = np.abs(data_esrg_ft - data_esrg_scipy).max()
 print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
@@ -155,15 +157,25 @@ print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
 # IWD, Fortran esrg nearest neighbours
 print((" IWD, Fortran esrg nearest neighbours ").center(79, "-"))
 data_esrg_ft = ip_fortran.idw_esrg_nearest(
-    np.asfortranarray(points), data_pts, x_axis, y_axis, grid_spac, num_nn)
+    points_ft, data_pts, x_axis, y_axis, grid_spac, num_nn)
 dev_abs_max = np.abs(data_esrg_ft - data_esrg_scipy).max()
 print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
 dev_abs_mean = np.abs(data_esrg_ft - data_esrg_scipy).mean()
 print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
 
+# Barycentric interpolation, Fortran
+simplices_ft = np.asfortranarray(triangles.simplices + 1)
+# counterclockwise oriented
+neighbours_ft = np.asfortranarray(triangles.neighbors + 1) 
+print((" Barycentric interpolation, Fortran ").center(79, "-"))
+# kth neighbour is opposite to kth vertex
+data_bi = ip_fortran.barycentric_interpolation(
+    points_ft, data_pts, x_axis, y_axis, simplices_ft, neighbours_ft)
+
 # Plot interpolated field
 plt.figure()
-plt.pcolormesh(x_axis, y_axis, data_esrg_ft, cmap=cmap, norm=norm)
+# plt.pcolormesh(x_axis, y_axis, data_esrg_ft, cmap=cmap, norm=norm)
+plt.pcolormesh(x_axis, y_axis, data_bi, cmap=cmap, norm=norm)
 plt.colorbar()
 plt.axis((x_grid[0] - 0.5, x_grid[-1] + 0.5,
           y_grid[0] - 0.3, y_grid[-1] + 0.3))
@@ -174,8 +186,10 @@ plt.show()
 ###############################################################################
 
 # Scipy (reference solution)
+# data_reg = data_esrg_ft
+data_reg = data_bi
 f_ip = interpolate.RegularGridInterpolator((x_axis, y_axis),
-                                           data_esrg_ft.transpose(),
+                                           data_reg.transpose(),
                                            method="linear",
                                            bounds_error=False)
 data_pts_reip_scipy = f_ip(points)
@@ -183,7 +197,7 @@ data_pts_reip_scipy = f_ip(points)
 # Fortran
 print((" Bilinear, Fortran ").center(79, "-"))
 data_pts_reip_ft = ip_fortran.bilinear(
-    x_axis, y_axis, np.asfortranarray(data_esrg_ft),
+    x_axis, y_axis, np.asfortranarray(data_reg),
     np.asfortranarray(points))
 if np.any(np.any(data_pts_reip_ft == -9999.0)):
     print("Warning: Invalid values in interpolated data")

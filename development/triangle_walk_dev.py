@@ -127,14 +127,14 @@ def distance_sq(A, B):
 
 # https://codeplea.com/triangular-interpolation
 
-def barycentric_interpolation(vt1, vt2, vt3, point):
+def barycentric_interpolation(vertex_1, vertex_2, vertex_3, point):
 
-    denom = (vt2.y - vt3.y) * (vt1.x - vt3.x) \
-        + (vt3.x - vt2.x) * (vt1.y - vt3.y)
-    weight_vt1 = ((vt2.y - vt3.y) * (point.x - vt3.x)
-                  + (vt3.x - vt2.x) * (point.y - vt3.y)) / denom
-    weight_vt2 = ((vt3.y - vt1.y) * (point.x - vt3.x)
-                  + (vt1.x - vt3.x) * (point.y - vt3.y)) / denom
+    denom = (vertex_2.y - vertex_3.y) * (vertex_1.x - vertex_3.x) \
+        + (vertex_3.x - vertex_2.x) * (vertex_1.y - vertex_3.y)
+    weight_vt1 = ((vertex_2.y - vertex_3.y) * (point.x - vertex_3.x)
+                  + (vertex_3.x - vertex_2.x) * (point.y - vertex_3.y)) / denom
+    weight_vt2 = ((vertex_3.y - vertex_1.y) * (point.x - vertex_3.x)
+                  + (vertex_1.x - vertex_3.x) * (point.y - vertex_3.y)) / denom
     weight_vt3 = 1.0 - weight_vt1 - weight_vt2
 
     return weight_vt1, weight_vt2, weight_vt3
@@ -235,18 +235,18 @@ if num_points <= 100_000:
 
 def get_adjacent_edge(simplices, neighbours, neighbour_none,
                       ind_tri, ind_rot, ind_opp):
-    ind_vtx_rot = simplices[ind_tri, ind_rot]  # constant
+    ind_vt_rot = simplices[ind_tri, ind_rot]  # constant
     while True:
-        ind_vtx_opp = simplices[ind_tri, ind_opp]
-        ind_vtx_rem = get_rem(simplices[ind_tri, :],
-                              ind_vtx_rot, ind_vtx_opp)
+        ind_vt_opp = simplices[ind_tri, ind_opp]
+        ind_vt_rem = get_rem(simplices[ind_tri, :],
+                              ind_vt_rot, ind_vt_opp)
         if neighbours[ind_tri, ind_opp] == neighbour_none:
             break
         else:
             ind_tri = neighbours[ind_tri, ind_opp]
-            ind_opp = np.where(ind_vtx_rem == simplices[ind_tri, :])[0][0]
-    ind_rot = np.where(ind_vtx_rot == simplices[ind_tri, :])[0][0]
-    ind_rem = np.where(ind_vtx_rem == simplices[ind_tri, :])[0][0]
+            ind_opp = np.where(ind_vt_rem == simplices[ind_tri, :])[0][0]
+    ind_rot = np.where(ind_vt_rot == simplices[ind_tri, :])[0][0]
+    ind_rem = np.where(ind_vt_rem == simplices[ind_tri, :])[0][0]
     return ind_tri, ind_rot, ind_opp, ind_rem
 
 # -----------------------------------------------------------------------------
@@ -488,8 +488,7 @@ neighbour_none = -1  # value denoting no neighbour
 
 # Settings for triangle walk algorithm
 ind_tri_start = 34  # starting triangle
-point_target = Point(4.99, 0.55)
-# point_target = Point(3.81, 7.48)
+point_target = Point(3.81, 7.48)
 # point_target = Point(18.4, 0.09)
 # point_target = Point(20.61, -2.18)  # outside of convex hull (ch)
 # point_target = Point(np.random.uniform(x_grid[0], x_grid[-1]),
@@ -528,14 +527,14 @@ plt.scatter(point_out.x, point_out.y, s=100, marker="*", color="blue",
 # Barycentric interpolation weights
 # -----------------------------------------------------------------------------
 ind = simplices[ind_tri_out, :]
-vt1 = Point(*points[ind[0], :])
-vt2 = Point(*points[ind[1], :])
-vt3 = Point(*points[ind[2], :])
+vertex_1 = Point(*points[ind[0], :])
+vertex_2 = Point(*points[ind[1], :])
+vertex_3 = Point(*points[ind[2], :])
 weight_vt1, weight_vt2, weight_vt3 \
-    = barycentric_interpolation(vt1, vt2, vt3, point_out)
-plt.scatter(vt1.x, vt1.y, s=weight_vt1 * 200.0, color="black")
-plt.scatter(vt2.x, vt2.y, s=weight_vt2 * 200.0, color="black")
-plt.scatter(vt3.x, vt3.y, s=weight_vt3 * 200.0, color="black")
+    = barycentric_interpolation(vertex_1, vertex_2, vertex_3, point_out)
+plt.scatter(vertex_1.x, vertex_1.y, s=weight_vt1 * 200.0, color="black")
+plt.scatter(vertex_2.x, vertex_2.y, s=weight_vt2 * 200.0, color="black")
+plt.scatter(vertex_3.x, vertex_3.y, s=weight_vt3 * 200.0, color="black")
 # -----------------------------------------------------------------------------
 plt.show()
 
@@ -545,14 +544,20 @@ iters_all = 0
 data_ip = np.empty((y_axis.size, x_axis.size))
 for ind_y in range(y_axis.size):
     # -------------------------------
-    # indices_x = range(x_axis.size)
+    # ind_x_start = 0
+    # ind_x_end = x_axis.size
+    # ind_x_step = +1
     # -------------------------------
     if (ind_y % 2 == 0):
-        indices_x = range(x_axis.size)
+        ind_x_start = 0
+        ind_x_end = x_axis.size
+        ind_x_step = +1
     else:
-        indices_x = range(x_axis.size - 1, -1, -1)
+        ind_x_start = x_axis.size - 1
+        ind_x_end = -1
+        ind_x_step = -1
     # -------------------------------
-    for ind_x in indices_x:
+    for ind_x in range(ind_x_start, ind_x_end, ind_x_step):
         point_target = Point(x_axis[ind_x], y_axis[ind_y])
         ind_tri_out, point_out, iters \
             = triangle_walk(points, simplices, neighbours, neighbour_none,
@@ -561,11 +566,12 @@ for ind_y in range(y_axis.size):
         ind_tri_start = ind_tri_out  # start from previous triangle
         # ---------------------------------------------------------------------
         ind = simplices[ind_tri_out, :]
-        vt1 = Point(*points[ind[0], :])
-        vt2 = Point(*points[ind[1], :])
-        vt3 = Point(*points[ind[2], :])
+        vertex_1 = Point(*points[ind[0], :])
+        vertex_2 = Point(*points[ind[1], :])
+        vertex_3 = Point(*points[ind[2], :])
         weight_vt1, weight_vt2, weight_vt3 \
-            = barycentric_interpolation(vt1, vt2, vt3, point_out)
+            = barycentric_interpolation(vertex_1, vertex_2,
+                                        vertex_3, point_out)
         data_ip[ind_y, ind_x] = data_pts[ind[0]] * weight_vt1 \
                               + data_pts[ind[1]] * weight_vt2 \
                               + data_pts[ind[2]] * weight_vt3
