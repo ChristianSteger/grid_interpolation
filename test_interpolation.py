@@ -2,10 +2,11 @@
 # (triangle mesh)
 #
 # Interpolation/remapping:
-# regular -> unstructured grid: bilinear interpolation
-# unstructured -> regular grid: inverse distance weighting (IDW)
+# - regular -> unstructured grid: bilinear interpolation
+# - unstructured -> regular grid: inverse distance weighting (IDW)
+# - triangle mesh -> regular grid: barycentric interpolation
 #
-# Author: Christian Steger, October 2024
+# Author: Christian Steger, November 2024
 
 # Load modules
 import numpy as np
@@ -16,11 +17,25 @@ import matplotlib.gridspec as gridspec
 from scipy.spatial import Delaunay
 from scipy import interpolate
 from scipy.spatial import KDTree
+from time import perf_counter
 
 mpl.style.use("classic") # type: ignore
 
 # Load required Fortran-functions
 from interpolation import interpolation as ip_fortran # type: ignore
+
+###############################################################################
+# Functions for artificial 2-dimensional surfaces
+###############################################################################
+
+def gaussian_mountain(x, y, x_0, y_0, sigma_x, sigma_y, amplitude=25.0):
+    surf =  amplitude * np.exp(-((x - x_0) ** 2 / (2 * sigma_x ** 2)) -
+                               ((y - y_0) ** 2 / (2 * sigma_y ** 2)))
+    return surf
+
+def sin_mountains(x, y, omega=0.6, amplitude=25.0):
+    surf = amplitude * np.sin(omega * x + y) + amplitude
+    return surf
 
 ###############################################################################
 # Create example triangle mesh and equally spaced regular grid
@@ -30,9 +45,9 @@ from interpolation import interpolation as ip_fortran # type: ignore
 # ----- very small grid/mesh -----
 # num_points = 50
 # ----- small grid/mesh ---
-num_points = 5_000
+# num_points = 5_000
 # ----- large grid/mesh -----
-# num_points = 100_000
+num_points = 100_000
 # ----- very large grid/mesh -----
 # num_points = 500_000
 # ----------------------
@@ -49,20 +64,11 @@ print("Number of cells in triangle mesh: ", triangles.simplices.shape[0])
 indptr_con, indices_con = triangles.vertex_neighbor_vertices
 
 # Generate artificial data on triangle mesh
-amplitude = 25.0
-def surface(x, y, x_0=points[:, 0].mean(), y_0=points[:, 1].mean(),
-            sigma_x=np.std(points[:, 0]), sigma_y=np.std(points[:, 1]),
-            amplitude=amplitude):
-    surf =  amplitude * np.exp(-((x - x_0) ** 2 / (2 * sigma_x ** 2)) -
-                               ((y - y_0) ** 2 / (2 * sigma_y ** 2)))
-    # -------------------------------------------------------------------------
-    # Modify artificial data further
-    # -------------------------------------------------------------------------
-    # mask = (points[:, 0] < 6.7) & (points[:, 1] < 1.5)
-    # surf[mask] = 18.52
-    # -------------------------------------------------------------------------
-    return surf
-data_pts = surface(points[:, 0], points[:, 1])
+# data_pts = gaussian_mountain(x=points[:, 0], y=points[:, 1],
+#                              x_0=points[:, 0].mean(), y_0=points[:, 1].mean(),
+#                              sigma_x=np.std(points[:, 0]),
+#                              sigma_y=np.std(points[:, 1]))
+data_pts = sin_mountains(x=points[:, 0], y=points[:, 1])
 
 # Create equally spaced regular grid
 vertices = points[triangles.simplices]  # counterclockwise oriented
@@ -96,10 +102,15 @@ x_grid = np.linspace(x_axis[0] - grid_spac / 2.0, x_axis[-1] + grid_spac / 2.0,
 y_grid = np.linspace(y_axis[0] - grid_spac / 2.0, y_axis[-1] + grid_spac / 2.0,
                      y_axis.size + 1)
 
+# Mask with points from rectangular grid that are inside of triangle mesh
+x_2d, y_2d = np.meshgrid(x_axis, y_axis)
+mask_in = triangles.find_simplex(np.vstack((x_2d.ravel(), y_2d.ravel())).T)
+mask_in = (mask_in != -1).reshape(y_axis.size, x_axis.size)
+
 # Colormap (absolute)
 cmap = plt.get_cmap("Spectral")
 levels = MaxNLocator(nbins=20, steps=[1, 2, 5, 10], symmetric=False) \
-         .tick_values(0.0, amplitude)
+         .tick_values(0.0, data_pts.max())
 norm = mpl.colors.BoundaryNorm(levels, ncolors=cmap.N) # type: ignore
 
 # Plot nodes, triangulation and equally spaced regular grid (esrg)
@@ -110,7 +121,9 @@ if num_points <= 100_000:
     plt.scatter(points[:, 0], points[:, 1], c=data_pts, s=50, zorder=3,
                 cmap=cmap, norm=norm)
     plt.colorbar()
-    plt.scatter(*np.meshgrid(x_axis, y_axis), c="grey", s=5, zorder=2)
+    plt.scatter(x_2d[mask_in], y_2d[mask_in], c="grey", s=20, zorder=2)
+    plt.scatter(x_2d[~mask_in], y_2d[~mask_in], c="grey", s=20, marker="x",
+                zorder=2)
     plt.vlines(x=x_grid, ymin=y_grid[0], ymax=y_grid[-1], colors="black",
                zorder=2)
     plt.hlines(y=y_grid, xmin=x_grid[0], xmax=x_grid[-1], colors="black",
@@ -123,59 +136,72 @@ if num_points <= 100_000:
 # Interpolate from unstructured to regular grid
 ###############################################################################
 
-# IWD, Scipy k-d tree (reference solution)
+# -----------------------------------------------------------------------------
+# Scipy reference solutions
+# -----------------------------------------------------------------------------
+print(" Reference solutions (Scipy) ".center(60, "#"))
+
+# Inverse distance weighting (IDW)
 num_nn = 6  # number of nearest neighbours
+time_1 = perf_counter()
 kd_tree = KDTree(points)
-temp = np.meshgrid(x_axis, y_axis)
-points_ip = np.vstack((temp[0].ravel(), temp[1].ravel())).T
+points_ip = np.vstack([i.ravel() for i in np.meshgrid(x_axis, y_axis)]).T
 dist, indices = kd_tree.query(points_ip, k=num_nn, workers=-1)
-data_esrg_scipy = (((data_pts[indices] / dist)).sum(axis=1)
-                / (1.0 / dist).sum(axis=1)).reshape(y_axis.size, x_axis.size)
+data_reg_iwd_ref = (((data_pts[indices] / dist)).sum(axis=1)
+                    / (1.0 / dist).sum(axis=1)).reshape(y_axis.size,
+                                                        x_axis.size)
+time_2 = perf_counter()
+print(f"IDW interpolation: {(time_2 - time_1):.2f} s")
 
-# IWD, Fortran k-d tree
+# Barycentric interpolation
+time_1 = perf_counter()
+data_reg_bi_ref = interpolate.griddata(points, data_pts, points_ip,
+                                       method="linear")
+data_reg_bi_ref = data_reg_bi_ref.reshape(y_axis.size, x_axis.size)
+time_2 = perf_counter()
+print(f"Barycentric interpolation: {(time_2 - time_1):.2f} s")
+
+# -----------------------------------------------------------------------------
+# Fortran solutions
+# -----------------------------------------------------------------------------
+print(" Fortran solutions ".center(60, "#"))
+
+def deviation_stats(data, data_ref):
+    dev_abs_max = np.nanmax(np.abs(data - data_ref))
+    print(f"Max. abs. deviation: {dev_abs_max:.5f}")
+    dev_abs_per = np.nanpercentile(np.abs(data - data_ref), 99.0)
+    print(f"99th per. abs. deviation: {dev_abs_per:.5f}")
+    dev_abs_mean = np.nanmean(np.abs(data - data_ref))
+    print(f"Mean abs. deviation: {dev_abs_mean:.5f}")
+
+# Inverse distance weighting (IDW), k-d tree
+print((" IDW interpolation:, k-d tree ").center(60, "-"))
 points_ft_trans = np.asfortranarray(points.transpose())
-print((" IWD, Fortran k-d tree ").center(79, "-"))
-data_esrg_ft = ip_fortran.idw_kdtree(
+data_reg_iwd_kdtree_ft = ip_fortran.idw_kdtree(
     points_ft_trans, data_pts, x_axis, y_axis, num_nn)
-dev_abs_max = np.abs(data_esrg_ft - data_esrg_scipy).max()
-print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
-dev_abs_mean = np.abs(data_esrg_ft - data_esrg_scipy).mean()
-print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
+deviation_stats(data_reg_iwd_kdtree_ft, data_reg_iwd_ref)
 
-# IWD, Fortran esrg nearest neighbour + connected points
+# Inverse distance weighting (IDW), esrg nearest neighbours
+print((" IDW interpolation:, esrg nearest neighbours ").center(60, "-"))
 points_ft = np.asfortranarray(points)
-print((" IWD, Fortran esrg nearest neighbour + connected points ")
-      .center(79, "-"))
-data_esrg_ft = ip_fortran.idw_esrg_connected(
-    points_ft, data_pts, x_axis, y_axis, grid_spac,
-    (indices_con + 1), (indptr_con + 1))
-dev_abs_max = np.abs(data_esrg_ft - data_esrg_scipy).max()
-print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
-dev_abs_mean = np.abs(data_esrg_ft - data_esrg_scipy).mean()
-print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
-
-# IWD, Fortran esrg nearest neighbours
-print((" IWD, Fortran esrg nearest neighbours ").center(79, "-"))
-data_esrg_ft = ip_fortran.idw_esrg_nearest(
+data_reg_iwd_esrg_ft = ip_fortran.idw_esrg_nearest(
     points_ft, data_pts, x_axis, y_axis, grid_spac, num_nn)
-dev_abs_max = np.abs(data_esrg_ft - data_esrg_scipy).max()
-print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
-dev_abs_mean = np.abs(data_esrg_ft - data_esrg_scipy).mean()
-print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
+deviation_stats(data_reg_iwd_esrg_ft, data_reg_iwd_ref)
 
-# Barycentric interpolation, Fortran
+# Barycentric interpolation
+print((" Barycentric interpolation ").center(60, "-"))
 simplices_ft = np.asfortranarray(triangles.simplices + 1)
 # counterclockwise oriented
 neighbours_ft = np.asfortranarray(triangles.neighbors + 1) 
-print((" Barycentric interpolation, Fortran ").center(79, "-"))
 # kth neighbour is opposite to kth vertex
-data_bi = ip_fortran.barycentric_interpolation(
+data_reg_bi_ft = ip_fortran.barycentric_interpolation(
     points_ft, data_pts, x_axis, y_axis, simplices_ft, neighbours_ft)
+deviation_stats(data_reg_bi_ft, data_reg_bi_ref)
 
 # Plot interpolated field
 plt.figure()
-# plt.pcolormesh(x_axis, y_axis, data_esrg_ft, cmap=cmap, norm=norm)
-plt.pcolormesh(x_axis, y_axis, data_bi, cmap=cmap, norm=norm)
+# plt.pcolormesh(x_axis, y_axis, data_reg_iwd_esrg_ft, cmap=cmap, norm=norm)
+plt.pcolormesh(x_axis, y_axis, data_reg_bi_ft, cmap=cmap, norm=norm)
 plt.colorbar()
 plt.axis((x_grid[0] - 0.5, x_grid[-1] + 0.5,
           y_grid[0] - 0.3, y_grid[-1] + 0.3))
@@ -185,39 +211,45 @@ plt.show()
 # Interpolate from regular to unstructured grid
 ###############################################################################
 
-# Scipy (reference solution)
-# data_reg = data_esrg_ft
-data_reg = data_bi
+# Scipy reference solutions
+data_reg = {"iwd": data_reg_iwd_esrg_ft, "bi": data_reg_bi_ft}
+data_pts_rec = {}
+for i in data_reg.keys():
+    f_ip = interpolate.RegularGridInterpolator((x_axis, y_axis),
+                                            data_reg[i].transpose(),
+                                            method="linear",
+                                            bounds_error=False)
+    data_pts_rec[i] = f_ip(points)
 f_ip = interpolate.RegularGridInterpolator((x_axis, y_axis),
-                                           data_reg.transpose(),
-                                           method="linear",
-                                           bounds_error=False)
-data_pts_reip_scipy = f_ip(points)
+                                            mask_in.astype(float).transpose(),
+                                            method="linear",
+                                            bounds_error=False)
+mask_in_rec = (f_ip(points) > (1.0 - 1.0e-8))
 
-# Fortran
-print((" Bilinear, Fortran ").center(79, "-"))
-data_pts_reip_ft = ip_fortran.bilinear(
-    x_axis, y_axis, np.asfortranarray(data_reg),
+# Fortran solution
+print((" Fortran bilinear interpolation ").center(60, "-"))
+data_pts_rec_ft = ip_fortran.bilinear(
+    x_axis, y_axis, np.asfortranarray(data_reg_iwd_esrg_ft),
     np.asfortranarray(points))
-if np.any(np.any(data_pts_reip_ft == -9999.0)):
+if np.any(np.any(data_pts_rec_ft == -9999.0)):
     print("Warning: Invalid values in interpolated data")
-dev_abs_max = np.abs(data_pts_reip_ft - data_pts_reip_scipy).max()
-print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
-dev_abs_mean = np.abs(data_pts_reip_ft - data_pts_reip_scipy).mean()
-print(f"Mean absolute deviation: {dev_abs_mean:.8f}")
+deviation_stats(data_pts_rec_ft, data_pts_rec["iwd"])
 
 # Compare re-interpolated with original data
-print((" Deviation between original and re-interpolated data ")
-      .center(79, "-"))
-data_dev = data_pts_reip_ft - data_pts
-print(f"Maximal absolute deviation: {np.abs(data_dev).max():.8f}")
-print(f"Mean absolute deviation: {np.abs(data_dev).mean():.8f}")
+methods = {"iwd": "inverse distance weighting",
+           "bi": "barycentric interpolation"}
+for i in data_reg.keys():
+    print((" " + methods[i] + " ").center(60, "-"))
+    deviation_stats(data_pts_rec[i], data_pts)
+    print("Excluding extrapolated data:")
+    deviation_stats(data_pts_rec[i][mask_in_rec], data_pts[mask_in_rec])
 
 # Colormap (difference)
+data_dev = (data_pts_rec["bi"] - data_pts)
 cmap_diff = plt.get_cmap("RdBu")
 levels_diff = MaxNLocator(nbins=20, steps=[1, 2, 5, 10], symmetric=True) \
-    .tick_values(np.percentile(data_dev, 0.1),
-                 np.percentile(data_dev, 0.9))
+    .tick_values(np.percentile(data_dev, 0.25),
+                 np.percentile(data_dev, 0.75))
 norm_diff = mpl.colors.BoundaryNorm( # type: ignore
     levels_diff, ncolors=cmap_diff.N, extend="both")
 
@@ -241,7 +273,7 @@ if num_points <= 100_000:
                                 norm=norm, orientation="horizontal")
     # -------------------------------------------------------------------------
     ax1 = plt.subplot(gs[0, 1])
-    plt.scatter(points[:, 0], points[:, 1], c=data_pts_reip_ft, s=50, zorder=3,
+    plt.scatter(points[:, 0], points[:, 1], c=data_pts_rec["bi"], s=50, zorder=3,
                 cmap=cmap, norm=norm)
     plt.axis((x_grid[0] - 0.5, x_grid[-1] + 0.5,
             y_grid[0] - 0.3, y_grid[-1] + 0.3))
