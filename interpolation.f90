@@ -7,6 +7,7 @@ MODULE interpolation
 
   USE kd_tree
   USE query_esrg
+  USE triangle_walk
   USE OMP_LIB
   IMPLICIT NONE
 
