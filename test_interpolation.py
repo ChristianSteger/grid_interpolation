@@ -47,9 +47,9 @@ def sin_mountains(x, y, omega=0.6, amplitude=25.0):
 # ----- small grid/mesh ---
 # num_points = 5_000
 # ----- large grid/mesh -----
-num_points = 100_000
+# num_points = 100_000
 # ----- very large grid/mesh -----
-# num_points = 500_000
+num_points = 500_000
 # ----------------------
 
 # Create random nodes
@@ -61,7 +61,8 @@ points[:, 1] = np.random.uniform(-2.47, 9.89, num_points)  # y_limits
 # Triangulate nodes
 triangles = Delaunay(points)
 print("Number of cells in triangle mesh: ", triangles.simplices.shape[0])
-indptr_con, indices_con = triangles.vertex_neighbor_vertices
+simplices = triangles.simplices
+neighbors = triangles.neighbors
 
 # Generate artificial data on triangle mesh
 # data_pts = gaussian_mountain(x=points[:, 0], y=points[:, 1],
@@ -71,10 +72,10 @@ indptr_con, indices_con = triangles.vertex_neighbor_vertices
 data_pts = sin_mountains(x=points[:, 0], y=points[:, 1])
 
 # Create equally spaced regular grid
-vertices = points[triangles.simplices]  # counterclockwise oriented
+vertices = points[simplices]  # counterclockwise oriented
 temp = np.concatenate((vertices, np.ones(vertices.shape[:2] + (1,))), axis=2)
 area_tri = 0.5 * np.linalg.det(temp)
-gc_area = area_tri.sum() / triangles.simplices.shape[0]  # mean grid cell area
+gc_area = area_tri.sum() / simplices.shape[0]  # mean grid cell area
 grid_spac = np.sqrt(gc_area)  # grid spacing (dx = dy)
 safety_multi = 1.005
 x_ext_pts = (points[:, 0].max() - points[:, 0].min())
@@ -102,11 +103,6 @@ x_grid = np.linspace(x_axis[0] - grid_spac / 2.0, x_axis[-1] + grid_spac / 2.0,
 y_grid = np.linspace(y_axis[0] - grid_spac / 2.0, y_axis[-1] + grid_spac / 2.0,
                      y_axis.size + 1)
 
-# Mask with points from rectangular grid that are inside of triangle mesh
-x_2d, y_2d = np.meshgrid(x_axis, y_axis)
-mask_in = triangles.find_simplex(np.vstack((x_2d.ravel(), y_2d.ravel())).T)
-mask_in = (mask_in != -1).reshape(y_axis.size, x_axis.size)
-
 # Colormap (absolute)
 cmap = plt.get_cmap("Spectral")
 levels = MaxNLocator(nbins=20, steps=[1, 2, 5, 10], symmetric=False) \
@@ -116,14 +112,11 @@ norm = mpl.colors.BoundaryNorm(levels, ncolors=cmap.N) # type: ignore
 # Plot nodes, triangulation and equally spaced regular grid (esrg)
 if num_points <= 100_000:
     plt.figure()
-    plt.triplot(points[:, 0], points[:, 1], triangles.simplices, color="black",
+    plt.triplot(points[:, 0], points[:, 1], simplices, color="black",
                 linewidth=0.5, zorder=3)
     plt.scatter(points[:, 0], points[:, 1], c=data_pts, s=50, zorder=3,
                 cmap=cmap, norm=norm)
     plt.colorbar()
-    plt.scatter(x_2d[mask_in], y_2d[mask_in], c="grey", s=20, zorder=2)
-    plt.scatter(x_2d[~mask_in], y_2d[~mask_in], c="grey", s=20, marker="x",
-                zorder=2)
     plt.vlines(x=x_grid, ymin=y_grid[0], ymax=y_grid[-1], colors="black",
                zorder=2)
     plt.hlines(y=y_grid, xmin=x_grid[0], xmax=x_grid[-1], colors="black",
@@ -190,9 +183,9 @@ deviation_stats(data_reg_iwd_esrg_ft, data_reg_iwd_ref)
 
 # Barycentric interpolation
 print((" Barycentric interpolation ").center(60, "-"))
-simplices_ft = np.asfortranarray(triangles.simplices + 1)
+simplices_ft = np.asfortranarray(simplices + 1)
 # counterclockwise oriented
-neighbours_ft = np.asfortranarray(triangles.neighbors + 1) 
+neighbours_ft = np.asfortranarray(neighbors + 1)
 # kth neighbour is opposite to kth vertex
 data_reg_bi_ft = ip_fortran.barycentric_interpolation(
     points_ft, data_pts, x_axis, y_axis, simplices_ft, neighbours_ft)
@@ -220,11 +213,6 @@ for i in data_reg.keys():
                                             method="linear",
                                             bounds_error=False)
     data_pts_rec[i] = f_ip(points)
-f_ip = interpolate.RegularGridInterpolator((x_axis, y_axis),
-                                            mask_in.astype(float).transpose(),
-                                            method="linear",
-                                            bounds_error=False)
-mask_in_rec = (f_ip(points) > (1.0 - 1.0e-8))
 
 # Fortran solution
 print((" Fortran bilinear interpolation ").center(60, "-"))
@@ -241,8 +229,6 @@ methods = {"iwd": "inverse distance weighting",
 for i in data_reg.keys():
     print((" " + methods[i] + " ").center(60, "-"))
     deviation_stats(data_pts_rec[i], data_pts)
-    print("Excluding extrapolated data:")
-    deviation_stats(data_pts_rec[i][mask_in_rec], data_pts[mask_in_rec])
 
 # Colormap (difference)
 data_dev = (data_pts_rec["bi"] - data_pts)
