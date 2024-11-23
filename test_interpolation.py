@@ -66,7 +66,8 @@ neighbors = triangles.neighbors
 
 # Generate artificial data on triangle mesh
 # data_pts = gaussian_mountain(x=points[:, 0], y=points[:, 1],
-#                              x_0=points[:, 0].mean(), y_0=points[:, 1].mean(),
+#                              x_0=points[:, 0].mean(),
+#                              y_0=points[:, 1].mean(),
 #                              sigma_x=np.std(points[:, 0]),
 #                              sigma_y=np.std(points[:, 1]))
 data_pts = sin_mountains(x=points[:, 0], y=points[:, 1])

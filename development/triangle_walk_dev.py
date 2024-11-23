@@ -14,7 +14,7 @@ from scipy.spatial import Delaunay
 mpl.style.use("classic") # type: ignore
 
 ###############################################################################
-# Two-dimensional line/point algorithms and auxiliary functions
+# Functions and classes
 ###############################################################################
 
 class Point:
@@ -73,53 +73,96 @@ plt.title(f"Point outside of triangle: {point_outside}")
 plt.show()
 
 # -----------------------------------------------------------------------------
-# Find base point (-> shortest distance between line and point)
+# Triangle walk function
 # -----------------------------------------------------------------------------
 
-def base_point(line, point):
-    """Find the base point, which marks the shortest distance between
-       a line and a point)"""
-    dist_x = line.pt2.x - line.pt1.x
-    dist_y = line.pt2.y - line.pt1.y
-    u = (dist_x * (point.x - line.pt1.x) + dist_y * (point.y - line.pt1.y)) \
-        / (dist_x ** 2 + dist_y ** 2)
-    point_base = Point(line.pt1.x + dist_x * u, line.pt1.y + dist_y * u)
-    return u, point_base
+# https://inria.hal.science/inria-00072509/document
+# -> visibility walk (always terminates for a Delaunay triangulation)
 
-# Test function
-line = LineSegment(Point(3.0, 6.0), Point(6.0, 3.0))
-# line = LineSegment(Point(2.0, 5.0), Point(6.0, 5.0))  # horizontal
-# line = LineSegment(Point(5.0, 2.0), Point(5.0, 6.0))  # vertical
-point = Point(4.5, 3.0)
-u, point_base = base_point(line, point)
+def triangle_walk(points, simplices, neighbours, neighbour_none,
+                  ind_tri, point_target, plot, print_stat):
+    iters = 0
+    point_inside_ch = True
+    # Plot start --------------------------------------------------------------
+    if plot:
+        cols = np.array(["green", "blue", "red"])
+        plt.figure(figsize=(10 * 1.2, 7 * 1.2))
+        ax = plt.axes()
+        plt.triplot(points[:, 0], points[:, 1], simplices, color="black",
+                    linewidth=0.5)
+        centroids = points[simplices].mean(axis=1)
+        plt.scatter(centroids[:, 0], centroids[:, 1], color="black",
+                    marker="+", s=50)
+        plt.scatter(points[simplices[ind_tri, :], 0],
+                    points[simplices[ind_tri, :], 1],
+                    color=cols, s=50)
+        ind_neigh = neighbours[ind_tri]
+        mask = (ind_neigh != neighbour_none)
+        plt.scatter(centroids[ind_neigh[mask], 0],
+                    centroids[ind_neigh[mask], 1],
+                    color=cols[mask], marker="o", s=100, alpha=0.5)
+        plt.scatter(point_target.x, point_target.y, color="black", s=100,
+                    marker="*")
+        plt.scatter(*centroids[ind_tri, :], color="black", s=50)
+    # Plot end ----------------------------------------------------------------
+    while True:
 
-# Plot
-plt.figure(figsize=(8, 8))
-plt.plot([line.pt1.x, line.pt2.x], [line.pt1.y, line.pt2.y],
-         color="black", lw=1.5)
-plt.scatter([line.pt1.x, line.pt2.x, point.x],
-            [line.pt1.y, line.pt2.y, point.y],
-            s=20, color="black")
-plt.text(line.pt1.x + 0.2, line.pt1.y + 0.2, "Start", fontsize=12)
-plt.text(line.pt2.x + 0.2, line.pt2.y + 0.2, "End", fontsize=12)
-plt.scatter([point_base.x], [point_base.y], s=20, color="red")
-plt.axis((0.0, 8.0, 0.0, 8.0))
-plt.title(f"u = {u:.2f}")
-plt.show()
+        iters += 1
+        # Plot start ----------------------------------------------------------
+        if plot:
+            poly = list(zip(points[simplices[ind_tri, :], 0],
+                            points[simplices[ind_tri, :], 1]))
+            poly = plt.Polygon(poly, facecolor="orange", # type: ignore
+                            edgecolor="none", alpha=0.5, zorder=-2)
+            ax.add_patch(poly)
+        # Plot end ------------------------------------------------------------
 
-# -----------------------------------------------------------------------------
-# Auxiliary functions
-# -----------------------------------------------------------------------------
+        # Find intersection with triangle edge
+        point_outside = False
+        for i in range(3):
+            ind_1 = i
+            ind_2 = (i + 1) % 3
+            line_edge = LineSegment(
+                Point(*points[simplices[ind_tri, ind_1], :]), 
+                Point(*points[simplices[ind_tri, ind_2], :])
+                )
+            if triangle_point_outside(line_edge, point_target):
+                point_outside = True
+                break
+        if point_outside == False:
+            # Plot start ------------------------------------------------------
+            if plot:
+                poly = list(zip(points[simplices[ind_tri, :], 0],
+                                points[simplices[ind_tri, :], 1]))
+                poly = plt.Polygon(poly, facecolor="red", # type: ignore
+                                edgecolor="none", alpha=0.5, zorder=-2)
+                ax.add_patch(poly)
+            # Plot end --------------------------------------------------------
+            if print_stat:
+                print("Exit: Triangle containing point found")
+            break
+        i -= 1
+        if i < 0:
+            i = 2
+        ind_tri_pre = ind_tri
+        ind_tri = neighbours[ind_tri, i]
 
-def get_rem(array, elem_1, elem_2):
-    """Get remaining element from array/list with 3 elements"""
-    for i in range(3):
-        if (array[i] != elem_1) and (array[i] != elem_2):
-            return array[i]
+        # Handle points outside of convex hull
+        if ind_tri == neighbour_none:
+            if print_stat:
+                print("Point is outside of convex hull")
+            ind_tri = ind_tri_pre  # set triangle index to last valid
+            point_inside_ch = False
+            break
 
-def distance_sq(A, B):
-    """Compute squared distance between point A and B"""
-    return (A.x - B.x) ** 2 + (A.y - B.y) ** 2
+    # Plot start --------------------------------------------------------------
+    if plot:
+        plt.title(f"Number of iterations" + f": {iters}", loc="left")
+        plt.axis((x_grid[0] - 0.5, x_grid[-1] + 0.5,
+                y_grid[0] - 0.3, y_grid[-1] + 0.3))
+        plt.show()
+    # Plot end ----------------------------------------------------------------
+    return ind_tri, point_inside_ch, iters
 
 # -----------------------------------------------------------------------------
 # Weights for barycentric interpolation
@@ -139,6 +182,57 @@ def barycentric_interpolation(vertex_1, vertex_2, vertex_3, point):
 
     return weight_vt1, weight_vt2, weight_vt3
 
+# -----------------------------------------------------------------------------
+# Fill cells in rectangular grid with nearest neighbour
+# -----------------------------------------------------------------------------
+
+def fill_nearest_neighbour(data, mask_outside, x_axis, y_axis):
+
+    for ind_y in range(y_axis.size):
+        for ind_x in range(x_axis.size):
+            if mask_outside[ind_y, ind_x]:
+                print("-" * 60)
+                print(f"Cell requiring filling ({ind_y}, {ind_x})")
+                level = 0
+                nn_found = False
+                dist_sq_sel = np.inf
+                while not nn_found:
+                    level += 1
+                    radius_sq_min = (level - 0.5) ** 2
+                    radius_sq_max = (level + 0.5) ** 2
+                    print("Considered radius range: " 
+                          + "[%.1f" % np.sqrt(radius_sq_min) + ", " 
+                          + "%.1f" % np.sqrt(radius_sq_max) + "]")
+                    for i in range(np.maximum(ind_y - level, 0),
+                                   np.minimum(ind_y + level + 1, y_axis.size)):
+                        for j in range(np.maximum(ind_x - level, 0),
+                                       np.minimum(ind_x + level + 1,
+                                                  x_axis.size)):
+                            if not mask_outside[i, j]:
+                                dist_sq = (i - ind_y) ** 2 + (j - ind_x) ** 2
+                                if ((dist_sq >= radius_sq_min) 
+                                    and (dist_sq < radius_sq_max) 
+                                    and (dist_sq < dist_sq_sel)):
+                                    print("(" + str(i) + ", " + str(j) 
+                                          + ") dist.: %.2f" % np.sqrt(dist_sq))
+                                    dist_sq_sel = dist_sq
+                                    data[ind_y, ind_x] = data[i, j]
+                                    nn_found = True
+                print(f"Final selected distance: {np.sqrt(dist_sq_sel):.2f}")
+
+###############################################################################
+# Functions for artificial 2-dimensional surfaces
+###############################################################################
+
+def gaussian_mountain(x, y, x_0, y_0, sigma_x, sigma_y, amplitude=25.0):
+    surf =  amplitude * np.exp(-((x - x_0) ** 2 / (2 * sigma_x ** 2)) -
+                               ((y - y_0) ** 2 / (2 * sigma_y ** 2)))
+    return surf
+
+def sin_mountains(x, y, omega=0.6, amplitude=25.0):
+    surf = amplitude * np.sin(omega * x + y) + amplitude
+    return surf
+
 ###############################################################################
 # Create example triangle mesh and equally spaced regular grid
 ###############################################################################
@@ -147,9 +241,9 @@ def barycentric_interpolation(vertex_1, vertex_2, vertex_3, point):
 # ----- very small grid/mesh -----
 # num_points = 50
 # ----- small grid/mesh -----
-# num_points = 5_000
+num_points = 5_000
 # ----- large grid/mesh -----
-num_points = 100_000
+# num_points = 100_000
 # ----------------------
 
 # Create random nodes
@@ -163,20 +257,12 @@ triangles = Delaunay(points)
 print("Number of cells in triangle mesh: ", triangles.simplices.shape[0])
 
 # Generate artificial data on triangle mesh
-amplitude = 25.0
-def surface(x, y, x_0=points[:, 0].mean(), y_0=points[:, 1].mean(),
-            sigma_x=np.std(points[:, 0]), sigma_y=np.std(points[:, 1]),
-            amplitude=amplitude):
-    surf =  amplitude * np.exp(-((x - x_0) ** 2 / (2 * sigma_x ** 2)) -
-                               ((y - y_0) ** 2 / (2 * sigma_y ** 2)))
-    # -------------------------------------------------------------------------
-    # Modify artificial data further
-    # -------------------------------------------------------------------------
-    # mask = (points[:, 0] < 6.7) & (points[:, 1] < 1.5)
-    # surf[mask] = 18.52
-    # -------------------------------------------------------------------------
-    return surf
-data_pts = surface(points[:, 0], points[:, 1])
+# data_pts = gaussian_mountain(x=points[:, 0], y=points[:, 1],
+#                              x_0=points[:, 0].mean(),
+#                              y_0=points[:, 1].mean(),
+#                              sigma_x=np.std(points[:, 0]),
+#                              sigma_y=np.std(points[:, 1]))
+data_pts = sin_mountains(x=points[:, 0], y=points[:, 1])
 
 # Create equally spaced regular grid
 vertices = points[triangles.simplices]  # counterclockwise oriented
@@ -205,7 +291,7 @@ y_grid = np.linspace(y_axis[0] - grid_spac / 2.0, y_axis[-1] + grid_spac / 2.0,
 # Colormap (absolute)
 cmap = plt.get_cmap("Spectral")
 levels = MaxNLocator(nbins=20, steps=[1, 2, 5, 10], symmetric=False) \
-         .tick_values(0.0, amplitude)
+         .tick_values(0.0, data_pts.max())
 norm = mpl.colors.BoundaryNorm(levels, ncolors=cmap.N) # type: ignore
 
 # Plot nodes, triangulation and equally spaced regular grid (esrg)
@@ -226,260 +312,9 @@ if num_points <= 100_000:
     plt.show()
 
 ###############################################################################
-# Walk through mesh to find triangle
+# Test barycentric interpolation (and filling of rectangular grid cells
+# outside of convex hull with nearest neighbours)
 ###############################################################################
-
-# -----------------------------------------------------------------------------
-# Move to adjacent edge in convex hull
-# -----------------------------------------------------------------------------
-
-def get_adjacent_edge(simplices, neighbours, neighbour_none,
-                      ind_tri, ind_rot, ind_opp):
-    ind_vt_rot = simplices[ind_tri, ind_rot]  # constant
-    while True:
-        ind_vt_opp = simplices[ind_tri, ind_opp]
-        ind_vt_rem = get_rem(simplices[ind_tri, :],
-                              ind_vt_rot, ind_vt_opp)
-        if neighbours[ind_tri, ind_opp] == neighbour_none:
-            break
-        else:
-            ind_tri = neighbours[ind_tri, ind_opp]
-            ind_opp = np.where(ind_vt_rem == simplices[ind_tri, :])[0][0]
-    ind_rot = np.where(ind_vt_rot == simplices[ind_tri, :])[0][0]
-    ind_rem = np.where(ind_vt_rem == simplices[ind_tri, :])[0][0]
-    return ind_tri, ind_rot, ind_opp, ind_rem
-
-# -----------------------------------------------------------------------------
-# Triangle walk function
-# -----------------------------------------------------------------------------
-
-# https://inria.hal.science/inria-00072509/document
-# -> visibility walk (always terminates for a Delaunay triangulation)
-
-def triangle_walk(points, simplices, neighbours, neighbour_none,
-                  ind_tri, point_target, plot, print_stat):
-    iters = 0
-    iters_ch = 0  # iteration along convex hull
-    # Plot start --------------------------------------------------------------
-    if plot:
-        cols = np.array(["green", "blue", "red"])
-        plt.figure(figsize=(10 * 1.2, 7 * 1.2))
-        ax = plt.axes()
-        plt.triplot(points[:, 0], points[:, 1], simplices, color="black",
-                    linewidth=0.5)
-        centroids = points[simplices].mean(axis=1)
-        plt.scatter(centroids[:, 0], centroids[:, 1], color="black",
-                    marker="+", s=50)
-        plt.scatter(points[simplices[ind_tri, :], 0],
-                    points[simplices[ind_tri, :], 1],
-                    color=cols, s=50)
-        ind_neigh = neighbours[ind_tri]
-        mask = (ind_neigh != neighbour_none)
-        plt.scatter(centroids[ind_neigh[mask], 0],
-                    centroids[ind_neigh[mask], 1],
-                    color=cols[mask], marker="o", s=100, alpha=0.5)
-        plt.scatter(point_target.x, point_target.y, color="black", s=50)
-        plt.scatter(*centroids[ind_tri, :], color="black", s=50)
-    # Plot end ----------------------------------------------------------------
-    while True:
-
-        iters += 1
-        # Plot start ----------------------------------------------------------
-        if plot:
-            poly = list(zip(points[simplices[ind_tri, :], 0],
-                            points[simplices[ind_tri, :], 1]))
-            poly = plt.Polygon(poly, facecolor="orange", # type: ignore
-                            edgecolor="none", alpha=0.5, zorder=-2)
-            ax.add_patch(poly)
-            plt.scatter(point_target.x, point_target.y, color="black", s=50)
-        # Plot end ------------------------------------------------------------
-
-        # Find intersection with triangle edge
-        point_outside = False
-        for i in range(3):
-            ind_1 = i
-            ind_2 = (i + 1) % 3
-            line_edge = LineSegment(
-                Point(*points[simplices[ind_tri, ind_1], :]), 
-                Point(*points[simplices[ind_tri, ind_2], :])
-                )
-            if triangle_point_outside(line_edge, point_target):
-                point_outside = True
-                break
-        if point_outside == False:
-            # Plot start ------------------------------------------------------
-            if plot:
-                poly = list(zip(points[simplices[ind_tri, :], 0],
-                                points[simplices[ind_tri, :], 1]))
-                poly = plt.Polygon(poly, facecolor="red", # type: ignore
-                                edgecolor="none", alpha=0.5, zorder=-2)
-                ax.add_patch(poly)
-            # Plot end --------------------------------------------------------
-            if print_stat:
-                print("Exit: Triangle containing point found")
-            ind_tri_out = ind_tri
-            point_out = point_target
-            break
-        i -= 1
-        if i < 0:
-            i = 2
-        ind_tri_pre = ind_tri
-        ind_tri = neighbours[ind_tri, i]
-
-        # Handle points outside of convex hull
-        if ind_tri == neighbour_none:
-            if print_stat:
-                print("Point is outside of convex hull")
-            ind_tri = ind_tri_pre  # set triangle index to last valid
-            u, point_base = base_point(line_edge, point_target)
-            if (u >= 0) and (u <= 1):
-                # -------------------------------------------------------------
-                # Point is perpendicular to 'direct outer' edge of triangle
-                # -------------------------------------------------------------
-                # Plot start --------------------------------------------------
-                if plot:
-                    plt.plot([point_target.x, point_base.x],
-                             [point_target.y, point_base.y],
-                             color="black",linestyle=":", lw=0.8, zorder=-1)
-                    plt.scatter(point_base.x, point_base.y, color="black",
-                                marker="*", s=50)
-                    poly = list(zip(points[simplices[ind_tri, :], 0],
-                                    points[simplices[ind_tri, :], 1]))
-                    poly = plt.Polygon(poly, facecolor="red", # type: ignore
-                                    edgecolor="none", alpha=0.5, zorder=-2)
-                    ax.add_patch(poly)
-                # Plot end ----------------------------------------------------
-                if print_stat:
-                    print("Exit: Point is perpendicular to 'direct outer' "
-                        + "edge of triangle")
-                ind_tri_out = ind_tri
-                point_out = point_base
-                break
-
-            else:
-                # -------------------------------------------------------------
-                # Point is not perpendicular to 'direct outer' edge of triangle
-                # -------------------------------------------------------------
-                if print_stat:
-                    print("Point is not perpendicular to 'direct outer' edge"
-                        + " of triangle")
-
-                # Define 'rotation' and 'opposite' vertices
-                dist_sq_1 = distance_sq(point_target, line_edge.pt1)
-                dist_sq_2 = distance_sq(point_target, line_edge.pt2)
-                if (dist_sq_1 < dist_sq_2):
-                    ind_rot = ind_1
-                    ind_opp = ind_2
-                else:
-                    ind_rot = ind_2
-                    ind_opp = ind_1
-
-                # Move along line segments of convex hull
-                while True:
-
-                    iters_ch += 1
-
-                    # Move to triangle that represents adjacent outer edge
-                    ind_tri, ind_rot, ind_opp, ind_rem \
-                        = get_adjacent_edge(simplices, neighbours,
-                                            neighbour_none,
-                                            ind_tri, ind_rot, ind_opp)
-
-                    # Plot start ----------------------------------------------
-                    if plot:
-                        poly = list(zip(
-                            points[simplices[ind_tri, :], 0],
-                            points[simplices[ind_tri, :], 1]
-                            ))
-                        poly = plt.Polygon(poly, # type: ignore
-                                           facecolor="blue",
-                                           edgecolor="none", alpha=0.5,
-                                           zorder=-2)
-                        ax.add_patch(poly)
-                        plt.scatter(*points[simplices[ind_tri, ind_rot], :],
-                                    s=30, marker="o", color="blue")
-                        plt.scatter(*points[simplices[ind_tri, ind_rem], :],
-                                    s=30, marker="^", color="blue")
-                    # Plot end ------------------------------------------------
-
-                    line_edge = LineSegment(
-                        Point(*points[simplices[ind_tri, ind_rot], :]),
-                        Point(*points[simplices[ind_tri, ind_rem], :])
-                        )
-
-                    # Check if point is perpendicular to edge
-                    u, point_base = base_point(line_edge, point_target)
-                    if (u >= 0) and (u <= 1):
-                        # Plot start ------------------------------------------
-                        if plot:
-                            plt.plot([point_target.x, point_base.x],
-                                     [point_target.y, point_base.y],
-                                     color="black",linestyle=":", lw=0.8,
-                                     zorder=-1)
-                            plt.scatter(point_base.x, point_base.y,
-                                        color="black", marker="*", s=50)
-                            poly = list(zip(
-                                points[simplices[ind_tri, :], 0],
-                                points[simplices[ind_tri, :], 1]
-                                ))
-                            poly = plt.Polygon(poly, # type: ignore
-                                               facecolor="red",
-                                               edgecolor="none", alpha=0.5,
-                                               zorder=-2)
-                            ax.add_patch(poly)
-                        # Plot end --------------------------------------------
-                        if print_stat:
-                            print("Exit: Point is perpendicular to edge")
-                        ind_tri_out = ind_tri
-                        point_out = point_base
-                        break
-
-                    # Check if point should be assigned to 'rotation vertices'
-                    dist_sq_1 = distance_sq(point_target, line_edge.pt1)
-                    dist_sq_2 = distance_sq(point_target, line_edge.pt2)
-                    if dist_sq_1 < dist_sq_2:
-                        # Plot start ------------------------------------------
-                        if plot:
-                            plt.scatter(
-                                *points[simplices[ind_tri, ind_rot], :],
-                                s=150, facecolors="none", edgecolors="black"
-                                )
-                            poly = list(zip(
-                                points[simplices[ind_tri, :], 0],
-                                points[simplices[ind_tri, :], 1]
-                                ))
-                            poly = plt.Polygon(poly, # type: ignore
-                                               facecolor="red",
-                                               edgecolor="none", alpha=0.5,
-                                               zorder=-2)
-                            ax.add_patch(poly)
-                        # Plot end --------------------------------------------
-                        if print_stat:
-                            print("Exit: Point is not perpendicular to edge "
-                                + "-> use nearest vertices")
-                        ind_tri_out = ind_tri
-                        point_out \
-                            = Point(*points[simplices[ind_tri, ind_rot], :])
-                        break
-
-                    # Move to next line of convex hull during next iteration
-                    ind_opp = ind_rot
-                    ind_rot = ind_rem
-
-                break
-                # point assigned in inner 'while loop' -> break out of outer
-
-    # Plot start --------------------------------------------------------------
-    if plot:
-        plt.title(f"Number of iterations" + f": {iters}", loc="left")
-        plt.title(f"Number of iterations along convex hull" + f": {iters_ch}",
-                  loc="right")
-        plt.axis((x_grid[0] - 0.5, x_grid[-1] + 0.5,
-                y_grid[0] - 0.3, y_grid[-1] + 0.3))
-        plt.show()
-    # Plot end ----------------------------------------------------------------
-    return ind_tri_out, point_out, iters
-# -----------------------------------------------------------------------------
 
 # Arrays describing triangle mesh configuration
 simplices = triangles.simplices  # counterclockwise oriented
@@ -488,60 +323,60 @@ neighbour_none = -1  # value denoting no neighbour
 
 # Settings for triangle walk algorithm
 ind_tri_start = 34  # starting triangle
-point_target = Point(3.81, 7.48)
+# point_target = Point(3.81, 7.48)
 # point_target = Point(18.4, 0.09)
 # point_target = Point(20.61, -2.18)  # outside of convex hull (ch)
-# point_target = Point(np.random.uniform(x_grid[0], x_grid[-1]),
-#                      np.random.uniform(y_grid[0], y_grid[-1]))
+point_target = Point(np.random.uniform(x_grid[0], x_grid[-1]),
+                     np.random.uniform(y_grid[0], y_grid[-1]))
 # point_target = Point(*points[np.random.randint(0, num_points), :])
 # point_target = Point(20.540, 7.053)  # outside of ch, move along hull
 # point_target = Point(0.697768, 1.287293)   # outside of ch, move along hull
 # point_target = Point(17.91493, -2.67667)   # outside of ch, move along hull
 
 # Call function
-ind_tri_out, point_out, iters \
+ind_tri_out, point_inside_ch, iters \
     = triangle_walk(points, simplices, neighbours, neighbour_none,
                     ind_tri_start, point_target, plot=False, print_stat=True)
 
 # Overview plot
-plt.figure(figsize=(10 * 1.2, 7 * 1.2))
-ax = plt.axes()
-plt.triplot(points[:, 0], points[:, 1], simplices, color="black",
-            linewidth=0.5)
-cols = ("red", "darkgreen")
-for ind_i, i in enumerate((ind_tri_start, ind_tri_out)):
-    poly = list(zip(points[simplices[i, :], 0],
-                    points[simplices[i, :], 1]))
-    poly = plt.Polygon(poly, facecolor=cols[ind_i], # type: ignore
-                       edgecolor="none",
-                       alpha=0.4, zorder=-2)
-    ax.add_patch(poly)
-centroids = points[simplices].mean(axis=1)
-plt.scatter(centroids[:, 0], centroids[:, 1], color="black",
-            marker="+", s=50)
-plt.scatter(point_target.x, point_target.y, s=100, marker="o", color="green",
-            zorder=5)
-plt.scatter(point_out.x, point_out.y, s=100, marker="*", color="blue",
-            zorder=5)
-# -----------------------------------------------------------------------------
-# Barycentric interpolation weights
-# -----------------------------------------------------------------------------
-ind = simplices[ind_tri_out, :]
-vertex_1 = Point(*points[ind[0], :])
-vertex_2 = Point(*points[ind[1], :])
-vertex_3 = Point(*points[ind[2], :])
-weight_vt1, weight_vt2, weight_vt3 \
-    = barycentric_interpolation(vertex_1, vertex_2, vertex_3, point_out)
-plt.scatter(vertex_1.x, vertex_1.y, s=weight_vt1 * 200.0, color="black")
-plt.scatter(vertex_2.x, vertex_2.y, s=weight_vt2 * 200.0, color="black")
-plt.scatter(vertex_3.x, vertex_3.y, s=weight_vt3 * 200.0, color="black")
-# -----------------------------------------------------------------------------
-plt.show()
+if point_inside_ch:
+    plt.figure(figsize=(10 * 1.2, 7 * 1.2))
+    ax = plt.axes()
+    plt.triplot(points[:, 0], points[:, 1], simplices, color="black",
+                linewidth=0.5)
+    cols = ("red", "darkgreen")
+    for ind_i, i in enumerate((ind_tri_start, ind_tri_out)):
+        poly = list(zip(points[simplices[i, :], 0],
+                        points[simplices[i, :], 1]))
+        poly = plt.Polygon(poly, facecolor=cols[ind_i], # type: ignore
+                        edgecolor="none",
+                        alpha=0.4, zorder=-2)
+        ax.add_patch(poly)
+    centroids = points[simplices].mean(axis=1)
+    plt.scatter(centroids[:, 0], centroids[:, 1], color="black",
+                marker="+", s=50)
+    plt.scatter(point_target.x, point_target.y, s=100, marker="o",
+                color="green", zorder=5)
+    # -------------------------------------------------------------------------
+    # Barycentric interpolation weights
+    # -------------------------------------------------------------------------
+    ind = simplices[ind_tri_out, :]
+    vertex_1 = Point(*points[ind[0], :])
+    vertex_2 = Point(*points[ind[1], :])
+    vertex_3 = Point(*points[ind[2], :])
+    weight_vt1, weight_vt2, weight_vt3 \
+        = barycentric_interpolation(vertex_1, vertex_2, vertex_3, point_target)
+    plt.scatter(vertex_1.x, vertex_1.y, s=weight_vt1 * 200.0, color="black")
+    plt.scatter(vertex_2.x, vertex_2.y, s=weight_vt2 * 200.0, color="black")
+    plt.scatter(vertex_3.x, vertex_3.y, s=weight_vt3 * 200.0, color="black")
+    # -------------------------------------------------------------------------
+    plt.show()
 
 # Barycentric interpolation for rectangular grid
 ind_tri_start = 0
 iters_all = 0
 data_ip = np.empty((y_axis.size, x_axis.size))
+data_ip.fill(np.nan)
 for ind_y in range(y_axis.size):
     # -------------------------------
     # ind_x_start = 0
@@ -559,22 +394,23 @@ for ind_y in range(y_axis.size):
     # -------------------------------
     for ind_x in range(ind_x_start, ind_x_end, ind_x_step):
         point_target = Point(x_axis[ind_x], y_axis[ind_y])
-        ind_tri_out, point_out, iters \
+        ind_tri_out, point_inside_ch, iters \
             = triangle_walk(points, simplices, neighbours, neighbour_none,
                             ind_tri_start, point_target,
                             plot=False, print_stat=False)
         ind_tri_start = ind_tri_out  # start from previous triangle
         # ---------------------------------------------------------------------
-        ind = simplices[ind_tri_out, :]
-        vertex_1 = Point(*points[ind[0], :])
-        vertex_2 = Point(*points[ind[1], :])
-        vertex_3 = Point(*points[ind[2], :])
-        weight_vt1, weight_vt2, weight_vt3 \
-            = barycentric_interpolation(vertex_1, vertex_2,
-                                        vertex_3, point_out)
-        data_ip[ind_y, ind_x] = data_pts[ind[0]] * weight_vt1 \
-                              + data_pts[ind[1]] * weight_vt2 \
-                              + data_pts[ind[2]] * weight_vt3
+        if point_inside_ch:
+            ind = simplices[ind_tri_out, :]
+            vertex_1 = Point(*points[ind[0], :])
+            vertex_2 = Point(*points[ind[1], :])
+            vertex_3 = Point(*points[ind[2], :])
+            weight_vt1, weight_vt2, weight_vt3 \
+                = barycentric_interpolation(vertex_1, vertex_2,
+                                            vertex_3, point_target)
+            data_ip[ind_y, ind_x] = data_pts[ind[0]] * weight_vt1 \
+                                + data_pts[ind[1]] * weight_vt2 \
+                                + data_pts[ind[2]] * weight_vt3
         # ---------------------------------------------------------------------
         iters_all += iters
 
@@ -583,8 +419,19 @@ print(f"Number of iterations: {iters_all}")
 ipc = iters_all / (x_axis.size * y_axis.size)
 print(f"Iterations per interpolated cell: {ipc:.2f}")
 
+# Fill missing cells in rectangular grid with nearest neighbour
+data_ip_cp = data_ip.copy()
+mask_outside = np.isnan(data_ip)
+fill_nearest_neighbour(data_ip, mask_outside, x_axis, y_axis)
+
 # Test plot
 plt.figure()
+# plt.pcolormesh(x_grid, y_grid, data_ip_cp, cmap=cmap, norm=norm)
 plt.pcolormesh(x_grid, y_grid, data_ip, cmap=cmap, norm=norm)
-plt.colorbar()
+plt.scatter(*np.meshgrid(x_axis, y_axis), c="grey", s=10)
+plt.triplot(points[:, 0], points[:, 1], triangles.simplices, color="black",
+            linewidth=0.5, zorder=3)
+plt.scatter(points[:, 0], points[:, 1], c=data_pts, s=50, zorder=3,
+            cmap=cmap, norm=norm)
+plt.colorbar(cmap=cmap, norm=norm)
 plt.show()
