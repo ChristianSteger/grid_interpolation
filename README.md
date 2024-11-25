@@ -38,6 +38,9 @@ of the domain.
 
 ## To do
 - 'Lists' of points (*points_cons* and *points_cons_next*) in *query_esrg.f90* are currently set to a fixed size of 1000. For larger numbers, a memory out of bound error occurs. This issue could be resolved by implementing an array with a dynamic size, similar to a C++ vector (see e.g., https://stackoverflow.com/questions/8384406/how-to-increase-array-size-on-the-fly-in-fortran).
+- Barycentric interpolation generates larger errors near the edge of the domain (convex hull). These errors could be
+reduced by prohibiting barycentric interpolation for sliver triangles close to the edge (and filling the subsequent
+missing values from the nearest neighbours).
 
 ## References
 - Triangle walk (visibility walk): https://inria.hal.science/inria-00072509/document
