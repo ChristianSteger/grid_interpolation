@@ -1,9 +1,10 @@
 # Description
-Fortran code to interpolate from regular to unstructured grid (triangle mesh) and vice versa.
-The former interpolation is performed with bilinear interpolation. The latter either with
-inverse distance weighting (IDW) for an unstructured grid or barycentric interpolation for
-a triangle mesh. The nearest neighbours for the IDW interpolation can be found with a k-d tree
-or a specific more efficient algorithm in case of an equally spaced regular grid (esrg) &ndash; i.e., a grid with an equal spacing in the x- and y-direction.
+Fortran code to interpolate from an unstructured grid (triangle mesh) to a regular grid and vice versa.
+The former interpolation is performed with inverse distance weighting (IDW) for an unstructured grid 
+or barycentric interpolation for a triangle mesh. The latter interpolation is performed bilinearly.
+The nearest neighbours for the IDW interpolation can be found with a k-d tree or a more efficient algorithm 
+in case of an equally spaced regular grid (esrg) &ndash; i.e., a grid with an equal spacing in the x- and y-direction.
+For the barycentric interpolation, triangles are found with a 'triangle walk'-algorithm.
 
 # Usage
 
@@ -28,3 +29,7 @@ rm *.so *.mod
 
 ## To do
 - 'Lists' of points (*points_cons* and *points_cons_next*) in *query_esrg.f90* are currently set to a fixed size of 1000. For larger numbers, a memory out of bound error ocurrs. This issue could be resolved by implementing an array with a dynamic size, similar to a C++ vector (see e.g., https://stackoverflow.com/questions/8384406/how-to-increase-array-size-on-the-fly-in-fortran).
+
+## References
+- Triangle walk (visibility walk): https://inria.hal.science/inria-00072509/document
+- Barycentric interpolation: https://codeplea.com/triangular-interpolation
