@@ -29,6 +29,12 @@ rm *.so *.mod
 
 ## Example output
 ![Alt text](https://github.com/ChristianSteger/Media/blob/master/grid_interpolation/Re-interpolation.png?raw=true "Output from test_interpolation.py")
+The above image visualises the application of the interpolation routines. We start with 5000 randomly positioned
+points whose z-values reflect a 'sine-mountain-pattern'. The points are subsequently Delaunay triangulated and its node values interpolated to the centres of a regular grid (via barycentric interpolation). An extrapolation is performed for
+cell centres of the regular grid that are located outside of the convex hull. Finally, the z-values on the regular
+grid are re-interpolated to the points via bilinear interpolation. Larger deviations occur at the boundary
+of the domain.
+
 
 ## To do
 - 'Lists' of points (*points_cons* and *points_cons_next*) in *query_esrg.f90* are currently set to a fixed size of 1000. For larger numbers, a memory out of bound error ocurrs. This issue could be resolved by implementing an array with a dynamic size, similar to a C++ vector (see e.g., https://stackoverflow.com/questions/8384406/how-to-increase-array-size-on-the-fly-in-fortran).
