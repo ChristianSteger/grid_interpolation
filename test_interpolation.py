@@ -1,10 +1,10 @@
-# Description: Test interpolation between regular and unstructured grid
-# (triangle mesh)
+# Description: Test interpolation between unstructured (triangle mesh) and
+#              regular grid
 #
 # Interpolation/remapping:
-# - regular -> unstructured grid: bilinear interpolation
 # - unstructured -> regular grid: inverse distance weighting (IDW)
 # - triangle mesh -> regular grid: barycentric interpolation
+# - regular -> unstructured grid: bilinear interpolation
 #
 # Author: Christian Steger, November 2024
 
