@@ -27,6 +27,9 @@ f2py -c --f90flags='-fopenmp' -lgomp --fcompiler=gfortran -L${cwd}/ -I${cwd}/ -l
 rm *.so *.mod
 ```
 
+## Example output
+![Alt text](https://github.com/ChristianSteger/Media/blob/master/grid_interpolation/Re-interpolation.png?raw=true "Output from test_interpolation.py")
+
 ## To do
 - 'Lists' of points (*points_cons* and *points_cons_next*) in *query_esrg.f90* are currently set to a fixed size of 1000. For larger numbers, a memory out of bound error ocurrs. This issue could be resolved by implementing an array with a dynamic size, similar to a C++ vector (see e.g., https://stackoverflow.com/questions/8384406/how-to-increase-array-size-on-the-fly-in-fortran).
 
