@@ -18,6 +18,8 @@ from scipy.spatial import Delaunay
 from scipy import interpolate
 from scipy.spatial import KDTree
 from time import perf_counter
+from shapely.geometry import Polygon
+import shapely.vectorized
 
 mpl.style.use("classic") # type: ignore
 
@@ -129,11 +131,12 @@ if num_points <= 100_000:
 ###############################################################################
 # Interpolate from unstructured to regular grid
 ###############################################################################
+print(" Interpolate from unstructured to regular grid ".center(79, "#"))
 
 # -----------------------------------------------------------------------------
 # Scipy reference solutions
 # -----------------------------------------------------------------------------
-print(" Reference solutions (Scipy) ".center(60, "#"))
+print("Reference solutions (Scipy):")
 
 # Inverse distance weighting (IDW)
 num_nn = 6  # number of nearest neighbours
@@ -158,15 +161,24 @@ print(f"Barycentric interpolation: {(time_2 - time_1):.2f} s")
 # -----------------------------------------------------------------------------
 # Fortran solutions
 # -----------------------------------------------------------------------------
-print(" Fortran solutions ".center(60, "#"))
+print("Fortran solutions:")
 
-def deviation_stats(data, data_ref):
-    dev_abs_max = np.nanmax(np.abs(data - data_ref))
-    print(f"Max. abs. deviation: {dev_abs_max:.5f}")
-    dev_abs_per = np.nanpercentile(np.abs(data - data_ref), 99.0)
-    print(f"99th per. abs. deviation: {dev_abs_per:.5f}")
-    dev_abs_mean = np.nanmean(np.abs(data - data_ref))
-    print(f"Mean abs. deviation: {dev_abs_mean:.5f}")
+def deviation_stats(data, data_ref, mask=None, mask_name=None,
+                    percentiles=[99.99, 99.0]):
+    if mask_name is None:
+        txt = "Absolute deviation statistics:"
+    else:
+        txt = "Absolute deviation statistics (" + mask_name + "):"
+    print(txt)
+    if mask is None:
+        dev_abs = np.abs(data - data_ref)
+    else:
+        dev_abs = np.abs(data[mask] - data_ref[mask])
+    print(f"- Maximum: {np.nanmax(dev_abs):.5f}")
+    for q in percentiles:
+        dev_abs_per = np.nanpercentile(dev_abs, q)
+        print(f"- {q}th percentile: {dev_abs_per:.5f}")
+    print(f"- Mean: {np.nanmean(dev_abs):.5f}")
 
 # Inverse distance weighting (IDW), k-d tree
 print((" IDW interpolation:, k-d tree ").center(60, "-"))
@@ -204,6 +216,28 @@ plt.show()
 ###############################################################################
 # Interpolate from regular to unstructured grid
 ###############################################################################
+print(" Interpolate from regular to unstructured grid ".center(79, "#"))
+
+# Order line segments of convex hull
+convex_hull = triangles.convex_hull
+convex_hull_ord = convex_hull.copy()
+convex_hull[0, :] = -1
+for i in range(1, convex_hull_ord.shape[0]):
+    j, k = np.where(convex_hull_ord[i - 1, 1] == convex_hull[:, :])
+    if k[0] == 0:
+        convex_hull_ord[i, :] = convex_hull[j[0], :]
+    else:
+        convex_hull_ord[i, :] = convex_hull[j[0], :][::-1]
+    convex_hull[j[0], :] = -1
+del convex_hull
+
+# Mask with 'inner' points
+poly_ch = Polygon(zip(points[convex_hull_ord[:, 0], 0],
+                      points[convex_hull_ord[:, 0], 1]))
+resolution = convex_hull_ord.shape[0] * 5
+poly_ch_small = poly_ch.buffer(-0.25, resolution=resolution)
+mask_pts_in = shapely.vectorized.contains(poly_ch_small, points[:, 0],
+                                          points[:, 1])
 
 # Scipy reference solutions
 data_reg = {"iwd": data_reg_iwd_esrg_ft, "bi": data_reg_bi_ft}
@@ -228,8 +262,11 @@ deviation_stats(data_pts_rec_ft, data_pts_rec["iwd"])
 methods = {"iwd": "inverse distance weighting",
            "bi": "barycentric interpolation"}
 for i in data_reg.keys():
-    print((" " + methods[i] + " ").center(60, "-"))
+    print((" Re-interpolation: " + methods[i] + " ").center(60, "-"))
     deviation_stats(data_pts_rec[i], data_pts)
+    deviation_stats(data_pts_rec[i], data_pts, mask_pts_in,
+                    mask_name="inner domain")
+print("-" * 60)
 
 # Colormap (difference)
 data_dev = (data_pts_rec["bi"] - data_pts)
@@ -245,36 +282,38 @@ if num_points <= 100_000:
     fontsize = 12.5
     plt.figure(figsize=(16.0, 6.0))
     gs = gridspec.GridSpec(2, 3, left=0.1, bottom=0.1, right=0.9, top=0.9,
-                        wspace=0.08, hspace=0.1,
-                        height_ratios=[1.0, 0.05])
+                           wspace=0.08, hspace=0.1, height_ratios=[1.0, 0.05])
     # -------------------------------------------------------------------------
     ax0 = plt.subplot(gs[0, 0])
     plt.scatter(points[:, 0], points[:, 1], c=data_pts, s=50, zorder=3,
                 cmap=cmap, norm=norm)
     plt.axis((x_grid[0] - 0.5, x_grid[-1] + 0.5,
-            y_grid[0] - 0.3, y_grid[-1] + 0.3))
+              y_grid[0] - 0.3, y_grid[-1] + 0.3))
     plt.title("Original data", fontsize=fontsize)
     # -------------------------------------------------------------------------
     ax0_c = plt.subplot(gs[1, 0])
     cb = mpl.colorbar.ColorbarBase(ax0_c, cmap=cmap, # type: ignore
-                                norm=norm, orientation="horizontal")
+                                   norm=norm, orientation="horizontal")
     # -------------------------------------------------------------------------
     ax1 = plt.subplot(gs[0, 1])
-    plt.scatter(points[:, 0], points[:, 1], c=data_pts_rec["bi"], s=50, zorder=3,
-                cmap=cmap, norm=norm)
+    plt.scatter(points[:, 0], points[:, 1], c=data_pts_rec["bi"], s=50,
+                zorder=3, cmap=cmap, norm=norm)
     plt.axis((x_grid[0] - 0.5, x_grid[-1] + 0.5,
-            y_grid[0] - 0.3, y_grid[-1] + 0.3))
+              y_grid[0] - 0.3, y_grid[-1] + 0.3))
     plt.title("Re-interpolated data", fontsize=fontsize)
     # -------------------------------------------------------------------------
     ax2 = plt.subplot(gs[0, 2])
     plt.scatter(points[:, 0], points[:, 1], c=data_dev, s=50, zorder=3,
                 cmap=cmap_diff, norm=norm_diff)
     plt.axis((x_grid[0] - 0.5, x_grid[-1] + 0.5,
-            y_grid[0] - 0.3, y_grid[-1] + 0.3))
+              y_grid[0] - 0.3, y_grid[-1] + 0.3))
     plt.title("Difference (re-interpolated - original)", fontsize=fontsize)
+    plt.plot(*poly_ch.exterior.coords.xy, color="black", lw=1.5, zorder=4)
+    plt.plot(*poly_ch_small.exterior.coords.xy, color="black", lw=1.5,
+             zorder=4)
     # -------------------------------------------------------------------------
     ax2_c = plt.subplot(gs[1, 2])
     cb = mpl.colorbar.ColorbarBase(ax2_c, cmap=cmap_diff, # type: ignore
-                                norm=norm_diff, orientation="horizontal")
+                                   norm=norm_diff, orientation="horizontal")
     # -------------------------------------------------------------------------
     plt.show()

@@ -9,7 +9,7 @@ or a specific more efficient algorithm in case of an equally spaced regular grid
 
 ## Create conda environment
 ```bash
-conda create -n grid_interpolation numpy scipy matplotlib ipython gfortran meson openmp -c conda-forge
+conda create -n grid_interpolation numpy scipy matplotlib ipython gfortran meson openmp shapely -c conda-forge
 ```
 
 ## Compile Fortran code and build shared library for F2PY (tested on MacOS)

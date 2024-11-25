@@ -95,7 +95,7 @@ MODULE interpolation
     END DO
     !$OMP END PARALLEL DO
     time_2 = OMP_GET_WTIME()
-    WRITE(*,'(a,f4.2,a)') 'Interpolation: ' , time_2 - time_1, ' s'
+    WRITE(*,'(a,f5.3,a)') 'Interpolation: ' , time_2 - time_1, ' s'
 
   END SUBROUTINE bilinear
 
@@ -143,7 +143,7 @@ MODULE interpolation
     time_1 = OMP_GET_WTIME()
     CALL build_kd_tree(tree, points, size(points, 2), 0, index)
     time_2 = OMP_GET_WTIME()
-    WRITE(*,'(a,f4.2,a)') 'Tree building: ' , time_2 - time_1, ' s'
+    WRITE(*,'(a,f5.3,a)') 'Tree building: ' , time_2 - time_1, ' s'
 
     ! Perform interpolation
     time_1 = OMP_GET_WTIME()
@@ -182,7 +182,7 @@ MODULE interpolation
     END DO
     !$OMP END PARALLEL DO
     time_2 = OMP_GET_WTIME()
-    WRITE(*,'(a,f4.2,a)') 'Interpolation: ' , time_2 - time_1, ' s'
+    WRITE(*,'(a,f5.3,a)') 'Interpolation: ' , time_2 - time_1, ' s'
 
     ! Free the memory associated with the k-d tree
     CALL free_kdtree(tree)
@@ -242,7 +242,7 @@ MODULE interpolation
     CALL assign_points_to_cells(points, x_axis, y_axis, grid_spac, &
       index_of_pts, indptr, num_ppgc)
     time_2 = OMP_GET_WTIME()
-    WRITE(*,'(a,f4.2,a)') 'Assign points to cells: ' , time_2 - time_1, ' s'
+    WRITE(*,'(a,f5.3,a)') 'Assign points to cells: ' , time_2 - time_1, ' s'
 
     ! Perform interpolation
     time_1 = OMP_GET_WTIME()
@@ -277,7 +277,7 @@ MODULE interpolation
     END DO
     !$OMP END PARALLEL DO
     time_2 = OMP_GET_WTIME()
-    WRITE(*,'(a,f4.2,a)') 'Interpolation: ' , time_2 - time_1, ' s'
+    WRITE(*,'(a,f5.3,a)') 'Interpolation: ' , time_2 - time_1, ' s'
 
     DEALLOCATE(index_of_pts)
     DEALLOCATE(indptr)
@@ -321,71 +321,97 @@ MODULE interpolation
     !f2py intent(hide) num_triangles
     !f2py intent(out) data_ip
 
-    INTEGER :: ind_x, ind_y
-    TYPE(point) :: point_target, point_out
-    INTEGER :: iters, ind_tri
+    INTEGER :: ind_x, ind_y, i
+    TYPE(point) :: point_target
+    INTEGER :: iters, ind_tri, ind_tri_start
     INTEGER :: neighbour_none
     TYPE(point) :: vertex_1, vertex_2, vertex_3
     REAL :: denom, weight_vt1, weight_vt2, weight_vt3
     INTEGER, DIMENSION(3) :: ind
     REAL(8) :: time_1, time_2
-    INTEGER :: ind_x_start, ind_x_end, ind_x_step
     INTEGER :: iters_tot
+    LOGICAL :: point_inside_ch
+    LOGICAL, DIMENSION(len_y, len_x) :: mask_outside
+    REAL :: opt_x, opt_y, centroid_x, centroid_y
+    REAL :: dist_sq_min, dist_sq
 
     neighbour_none = 0  ! value for no neighbour
+    mask_outside(:, :) = .FALSE.
+
+    ! Compute optimal starting position for triangle walk
+    ind_tri_start = 1
+    time_1 = OMP_GET_WTIME()
+    opt_x = x_axis(1)
+    opt_y = SUM(y_axis) / REAL(SIZE(y_axis))
+    dist_sq_min = HUGE(1.0)
+    DO i = 1, num_points
+      centroid_x = SUM(points(simplices(i, :), 1)) / 3.0
+      centroid_y = SUM(points(simplices(i, :), 2)) / 3.0
+      dist_sq = (centroid_x - opt_x) ** 2 + (centroid_y - opt_y) ** 2
+      IF (dist_sq < dist_sq_min) THEN
+        dist_sq_min = dist_sq
+        ind_tri_start = i
+      END IF
+    END DO
+    time_2 = OMP_GET_WTIME()
+    WRITE(*,'(a,f5.3,a)') 'Determine optimal start: ' , time_2 - time_1, ' s'
 
     ! Perform interpolation
-    ind_tri = 1
     iters_tot = 0
     time_1 = OMP_GET_WTIME()
-    !$OMP PARALLEL DO PRIVATE(ind_x_start, ind_x_end, ind_x_step, ind_x, &
-    !$OMP point_target, ind_tri, point_out, iters, ind, vertex_1, vertex_2, &
-    !$OMP vertex_3, denom, weight_vt1, weight_vt2, weight_vt3) &
-    !$OMP SCHEDULE(STATIC) REDUCTION(+:iters_tot)
+    !$OMP PARALLEL DO PRIVATE(ind_x, point_target, ind_tri, point_inside_ch, &
+    !$OMP iters, ind, vertex_1, vertex_2, vertex_3, denom, &
+    !$OMP weight_vt1, weight_vt2, weight_vt3) REDUCTION(+:iters_tot)
     DO ind_y = 1, len_y
-      IF (MODULO(ind_y, 2) == 1) THEN
-        ind_x_start = 1
-        ind_x_end = len_x
-        ind_x_step = +1
-      ELSE
-        ind_x_start = len_x
-        ind_x_end = 1
-        ind_x_step = -1
-      END IF
-      DO ind_x = ind_x_start, ind_x_end, ind_x_step
+      ind_tri = ind_tri_start
+      DO ind_x = 1, len_x
 
         ! Find triangle
         point_target%x = x_axis(ind_x)
         point_target%y = y_axis(ind_y)
         CALL find_triangle(points, simplices, neighbours, neighbour_none, &
-          ind_tri, point_target, point_out, iters)
+          point_target, ind_tri, point_inside_ch, iters)
         iters_tot = iters_tot + iters
 
         ! Barycentric interpolation
-        ind = simplices(ind_tri, :)
-        vertex_1%x = points(ind(1), 1)
-        vertex_1%y = points(ind(1), 2)
-        vertex_2%x = points(ind(2), 1)
-        vertex_2%y = points(ind(2), 2)
-        vertex_3%x = points(ind(3), 1)
-        vertex_3%y = points(ind(3), 2)
-        denom = (vertex_2%y - vertex_3%y) * (vertex_1%x - vertex_3%x) &
-          + (vertex_3%x - vertex_2%x) * (vertex_1%y - vertex_3%y)
-        weight_vt1 = ((vertex_2%y - vertex_3%y) * (point_out%x - vertex_3%x) &
-          + (vertex_3%x - vertex_2%x) * (point_out%y - vertex_3%y)) / denom
-        weight_vt2 = ((vertex_3%y - vertex_1%y) * (point_out%x - vertex_3%x) &
-          + (vertex_1%x - vertex_3%x) * (point_out%y - vertex_3%y)) / denom
-        weight_vt3 = 1.0 - weight_vt1 - weight_vt2
-        data_ip(ind_y, ind_x) = data_in(ind(1)) * weight_vt1 &
-          + data_in(ind(2)) * weight_vt2 &
-          + data_in(ind(3)) * weight_vt3
+        IF (point_inside_ch) THEN
+          ind = simplices(ind_tri, :)
+          vertex_1%x = points(ind(1), 1)
+          vertex_1%y = points(ind(1), 2)
+          vertex_2%x = points(ind(2), 1)
+          vertex_2%y = points(ind(2), 2)
+          vertex_3%x = points(ind(3), 1)
+          vertex_3%y = points(ind(3), 2)
+          denom = (vertex_2%y - vertex_3%y) * (vertex_1%x - vertex_3%x) &
+            + (vertex_3%x - vertex_2%x) * (vertex_1%y - vertex_3%y)
+          weight_vt1 = ((vertex_2%y - vertex_3%y) &
+            * (point_target%x - vertex_3%x) &
+            + (vertex_3%x - vertex_2%x) * (point_target%y - vertex_3%y)) &
+            / denom
+          weight_vt2 = ((vertex_3%y - vertex_1%y) &
+            * (point_target%x - vertex_3%x) &
+            + (vertex_1%x - vertex_3%x) * (point_target%y - vertex_3%y)) &
+            / denom
+          weight_vt3 = 1.0 - weight_vt1 - weight_vt2
+          data_ip(ind_y, ind_x) = data_in(ind(1)) * weight_vt1 &
+            + data_in(ind(2)) * weight_vt2 &
+            + data_in(ind(3)) * weight_vt3
+        ELSE
+          mask_outside(ind_y, ind_x) = .TRUE.
+        END IF
 
       END DO
     END DO
     !$OMP END PARALLEL DO
     time_2 = OMP_GET_WTIME()
-    WRITE(*,'(a,f4.2,a)') 'Interpolation: ' , time_2 - time_1, ' s'
+    WRITE(*,'(a,f5.3,a)') 'Interpolation: ' , time_2 - time_1, ' s'
     WRITE(*,'(a,i10)') 'Number of iterations:', iters_tot
+
+    ! Fill missing cells in rectangular grid with nearest neighbour
+    time_1 = OMP_GET_WTIME()
+    CALL fill_nearest_neighbour(mask_outside, x_axis, y_axis, data_ip)
+    time_2 = OMP_GET_WTIME()
+    WRITE(*,'(a,f5.3,a)') 'Fill missing values: ' , time_2 - time_1, ' s'
 
   END SUBROUTINE barycentric_interpolation
 

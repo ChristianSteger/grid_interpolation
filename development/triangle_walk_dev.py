@@ -80,7 +80,7 @@ plt.show()
 # -> visibility walk (always terminates for a Delaunay triangulation)
 
 def triangle_walk(points, simplices, neighbours, neighbour_none,
-                  ind_tri, point_target, plot, print_stat):
+                  point_target, ind_tri, plot, print_stat):
     iters = 0
     point_inside_ch = True
     # Plot start --------------------------------------------------------------
@@ -147,7 +147,7 @@ def triangle_walk(points, simplices, neighbours, neighbour_none,
         ind_tri_pre = ind_tri
         ind_tri = neighbours[ind_tri, i]
 
-        # Handle points outside of convex hull
+        # Points outside of convex hull
         if ind_tri == neighbour_none:
             if print_stat:
                 print("Point is outside of convex hull")
@@ -186,7 +186,7 @@ def barycentric_interpolation(vertex_1, vertex_2, vertex_3, point):
 # Fill cells in rectangular grid with nearest neighbour
 # -----------------------------------------------------------------------------
 
-def fill_nearest_neighbour(data, mask_outside, x_axis, y_axis):
+def fill_nearest_neighbour(mask_outside, x_axis, y_axis, data):
 
     for ind_y in range(y_axis.size):
         for ind_x in range(x_axis.size):
@@ -336,7 +336,7 @@ point_target = Point(np.random.uniform(x_grid[0], x_grid[-1]),
 # Call function
 ind_tri_out, point_inside_ch, iters \
     = triangle_walk(points, simplices, neighbours, neighbour_none,
-                    ind_tri_start, point_target, plot=False, print_stat=True)
+                    point_target, ind_tri_start, plot=False, print_stat=True)
 
 # Overview plot
 if point_inside_ch:
@@ -377,6 +377,7 @@ ind_tri_start = 0
 iters_all = 0
 data_ip = np.empty((y_axis.size, x_axis.size))
 data_ip.fill(np.nan)
+mask_outside = np.zeros((y_axis.size, x_axis.size), dtype=bool)
 for ind_y in range(y_axis.size):
     # -------------------------------
     # ind_x_start = 0
@@ -396,7 +397,7 @@ for ind_y in range(y_axis.size):
         point_target = Point(x_axis[ind_x], y_axis[ind_y])
         ind_tri_out, point_inside_ch, iters \
             = triangle_walk(points, simplices, neighbours, neighbour_none,
-                            ind_tri_start, point_target,
+                            point_target, ind_tri_start,
                             plot=False, print_stat=False)
         ind_tri_start = ind_tri_out  # start from previous triangle
         # ---------------------------------------------------------------------
@@ -411,6 +412,8 @@ for ind_y in range(y_axis.size):
             data_ip[ind_y, ind_x] = data_pts[ind[0]] * weight_vt1 \
                                 + data_pts[ind[1]] * weight_vt2 \
                                 + data_pts[ind[2]] * weight_vt3
+        else:
+            mask_outside[ind_y, ind_x] = True
         # ---------------------------------------------------------------------
         iters_all += iters
 
@@ -421,8 +424,7 @@ print(f"Iterations per interpolated cell: {ipc:.2f}")
 
 # Fill missing cells in rectangular grid with nearest neighbour
 data_ip_cp = data_ip.copy()
-mask_outside = np.isnan(data_ip)
-fill_nearest_neighbour(data_ip, mask_outside, x_axis, y_axis)
+fill_nearest_neighbour(mask_outside, x_axis, y_axis, data_ip)
 
 # Test plot
 plt.figure()
